@@ -75,6 +75,49 @@ An advice app that answers differently each run is not advice.
 
 ---
 
+## Hybrid: where the model is allowed to think
+
+The naive hybrid hands the model every question and lets it decide when to call
+the ration tool. That is **worse than either pure option**, because it puts the
+model in the path of a safety-critical number: it can decide not to call the
+tool, or paraphrase 20.0% as "about 20 to 22 percent".
+
+So the split is made **before** the model is reached, on the shape of the
+question rather than on anyone's confidence:
+
+| Route | Example | Path | Model involved |
+|---|---|---|---|
+| FACTUAL | "day 17 ration" | table only | never |
+| EXPLANATORY | "why does protein drop after day 14?" | model only | yes, no number at stake |
+| DIAGNOSTIC | "birds weak at day 20, feed is 18%" | **table → model** | yes, numbers already fixed |
+
+On the diagnostic route the table runs **first** and its figures go to the
+model as established FACTS. The model reasons about the gap between the
+published target and what the farmer reports. It never supplies the target.
+
+### Three guards, not one
+
+1. **Routing** — a question with one correct answer never reaches a model.
+   A test patches `llm.ask` to raise if called on the factual route.
+2. **Prompt constraint** — the system prompt forbids stating any nutrient
+   number not present in the supplied FACTS.
+3. **Output verification** — `verify_no_invented_numbers` checks every
+   percentage and kcal figure in the reply against the set we supplied. A
+   figure that did not come from the table is returned in
+   `unverified_numbers` with a warning. **It is never silently removed** —
+   hiding it would make the failure invisible.
+
+### Degradation
+
+With no `DEEPSEEK_API_KEY`, the explanatory and diagnostic routes still answer
+from the table and set `model_available: false`. The app is fully usable with
+no key, no network, and no model.
+
+Every response carries `route` and `model_used`, so a farmer or an auditor can
+always tell where a sentence came from.
+
+---
+
 ## Authority
 
 Tools declare an `Effect`; policy keys off the effect, never off the name.
