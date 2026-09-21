@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>मुर्गी आहार · Poultry 360</title>
+<style>
+  :root{
+    --bg:#fbf7f0; --card:#ffffff; --ink:#1c1917; --muted:#78716c;
+    --line:#e7e0d5; --accent:#b45309; --accent-soft:#fef3c7; --good:#15803d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       font-size:18px;line-height:1.55;padding-bottom:40px}
+  header{background:var(--accent);color:#fff;padding:18px 16px}
+  h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.01em}
+  .sub{opacity:.92;font-size:15px;margin-top:2px}
+  .wrap{max-width:560px;margin:0 auto;padding:0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+        padding:18px;margin-top:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  label{display:block;font-weight:700;margin-bottom:8px;font-size:17px}
+  .hint{color:var(--muted);font-weight:400;font-size:14px}
+  input{width:100%;font-size:28px;font-weight:700;padding:14px;
+        border:2px solid var(--line);border-radius:12px;text-align:center;
+        background:#fff;color:var(--ink)}
+  input:focus{outline:none;border-color:var(--accent)}
+  button{width:100%;margin-top:14px;padding:18px;font-size:20px;font-weight:800;
+         color:#fff;background:var(--accent);border:0;border-radius:12px;cursor:pointer}
+  button:active{transform:scale(.99)}
+  button:disabled{opacity:.55}
+  .big{font-size:44px;font-weight:800;color:var(--accent);line-height:1.1}
+  .row{display:flex;justify-content:space-between;align-items:baseline;
+       padding:12px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  .row .k{color:var(--muted);font-size:16px}
+  .row .v{font-weight:800;font-size:20px}
+  .pill{display:inline-block;background:var(--accent-soft);color:var(--accent);
+        padding:5px 12px;border-radius:999px;font-size:14px;font-weight:700}
+  .note{background:#f5f5f4;border-left:4px solid var(--accent);padding:12px 14px;
+        border-radius:8px;margin-top:14px;font-size:16px}
+  .src{color:var(--muted);font-size:13px;margin-top:14px;line-height:1.5}
+  .err{background:#fef2f2;border-left:4px solid #dc2626;color:#991b1b;
+       padding:14px;border-radius:8px;font-size:16px}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>मुर्गी आहार सलाह</h1>
+    <div class="sub">Broiler feed advice · दिन डालें, पूरा आहार पाएँ</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <label for="day">मुर्गी की उम्र <span class="hint">(Age in days · 0–42)</span></label>
+    <input id="day" type="number" inputmode="numeric" min="0" max="42" value="17" />
+    <label for="birds" style="margin-top:16px">कितनी मुर्गियाँ <span class="hint">(How many birds)</span></label>
+    <input id="birds" type="number" inputmode="numeric" min="1" value="1000" />
+    <button id="go">आहार बताएँ · Get ration</button>
+  </div>
+
+  <div id="err" class="card err hide"></div>
+
+  <div id="out" class="card hide">
+    <span class="pill" id="phase"></span>
+    <div style="margin-top:12px" class="hint">प्रोटीन · Crude protein</div>
+    <div class="big" id="cp"></div>
+
+    <div style="margin-top:16px">
+      <div class="row"><span class="k">ऊर्जा · Energy</span><span class="v" id="en"></span></div>
+      <div class="row"><span class="k">लाइसिन · Lysine</span><span class="v" id="lys"></span></div>
+      <div class="row"><span class="k">मेथियोनीन · Methionine</span><span class="v" id="met"></span></div>
+      <div class="row"><span class="k">कैल्शियम · Calcium</span><span class="v" id="ca"></span></div>
+      <div class="row"><span class="k">फ़ीड प्रति मुर्गी · Per bird</span><span class="v" id="pb"></span></div>
+      <div class="row"><span class="k">कुल फ़ीड आज · Total today</span><span class="v" id="tot"></span></div>
+      <div class="row"><span class="k">लक्ष्य वज़न · Target weight</span><span class="v" id="wt"></span></div>
+    </div>
+
+    <div class="note" id="note"></div>
+    <div class="src" id="src"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const API = location.port === "5173" ? "http://localhost:8000" : "";
+
+async function getRation(){
+  const day = parseInt($("day").value, 10);
+  const birds = parseInt($("birds").value, 10);
+  $("go").disabled = true;
+  $("err").classList.add("hide");
+  try{
+    const res = await fetch(API + "/api/ration", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({day, birds}),
+    });
+    const body = await res.json();
+    if(!body.ok){
+      $("err").textContent = body.error || ("नहीं मिला · " + (body.stop_reason||"error"));
+      $("err").classList.remove("hide");
+      $("out").classList.add("hide");
+      return;
+    }
+    const d = body.data;
+    $("phase").textContent = d.phase_name_hi + " · " + d.phase_name_en
+                           + "  (दिन " + d.day + ")";
+    $("cp").textContent = d.crude_protein_pct + "%";
+    $("en").textContent  = d.energy_kcal_per_kg + " kcal/kg";
+    $("lys").textContent = d.lysine_pct + "%";
+    $("met").textContent = d.methionine_pct + "%";
+    $("ca").textContent  = d.calcium_pct + "%";
+    $("pb").textContent  = d.feed_per_bird_g + " g";
+    $("tot").textContent = d.feed_total_kg + " kg";
+    $("wt").textContent  = d.target_weight_g ? d.target_weight_g + " g" : "—";
+    $("note").textContent = d.note_hi + "  " + d.note_en;
+    $("src").textContent = "स्रोत · Source: " + d.source.join(" · ")
+                         + "  [" + d.dataset_version + "]";
+    $("out").classList.remove("hide");
+  }catch(e){
+    $("err").textContent = "सर्वर नहीं मिला · Backend not reachable on port 8000.";
+    $("err").classList.remove("hide");
+  }finally{
+    $("go").disabled = false;
+  }
+}
+$("go").addEventListener("click", getRation);
+$("day").addEventListener("keydown", e => { if(e.key === "Enter") getRation(); });
+getRation();
+</script>
+</body>
+</html>
