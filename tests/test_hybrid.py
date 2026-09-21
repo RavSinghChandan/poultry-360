@@ -11,8 +11,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from domain.hybrid import answer
-from domain.router import Route, classify, extract_day
+from features.feed.hybrid import answer
+from features.feed.router_rules import Route, classify, extract_day
 from harness import llm
 
 

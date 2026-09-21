@@ -1,127 +1,105 @@
-"""HTTP surface. Thin on purpose — all the logic lives in the harness."""
+"""Platform HTTP surface.
+
+This file knows nothing about poultry. It discovers features, mounts them, and
+exposes platform-level endpoints. Adding a feature does not change this file.
+"""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
 
-from data import rations
-from domain.advisor import advise
-from domain.hybrid import answer as hybrid_answer
+from core.config import settings
+from core.registry import FeatureRegistry
 from harness import llm
+from harness.policy import Mode, Policy
+from harness.tools import Tool, ToolRegistry
+from harness.tracing import Tracer
 
-app = FastAPI(title="Poultry 360", version="0.1.0")
+app = FastAPI(title=settings.app_name, version=settings.version)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[settings.cors_origins],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+features = FeatureRegistry()
+features.discover()
 
-class RationRequest(BaseModel):
-    day: int = Field(..., ge=0, le=rations.MAX_DAY, description="Age in days since hatch")
-    birds: int = Field(1, ge=1, description="Birds in the batch")
-
-
-class AskRequest(BaseModel):
-    question: str = Field(..., min_length=1, max_length=500)
-    birds: int = Field(1, ge=1)
+# Every healthy feature's routes, mounted under its own key.
+for key, router in features.routers():
+    app.include_router(router, prefix=f"/api/{key}", tags=[key])
 
 
-class PlanRequest(BaseModel):
-    day_from: int = Field(..., ge=0, le=rations.MAX_DAY)
-    day_to: int = Field(..., ge=0, le=rations.MAX_DAY)
-    birds: int = Field(..., ge=1)
+def build_agent_tools() -> ToolRegistry:
+    """The shared registry, assembled from every healthy feature's tools."""
+    registry = ToolRegistry(
+        policy=Policy(mode=Mode(settings.policy_mode)),
+        tracer=Tracer(),
+    )
+    for spec in features.tools():
+        registry.register(Tool(
+            name=spec.name, run=spec.run, effect=spec.effect,
+            description=spec.description, reads_untrusted=spec.reads_untrusted,
+        ))
+    return registry
 
 
-def _respond(result) -> dict[str, Any]:
-    """One response shape for every advice call, including failures."""
-    body: dict[str, Any] = {
-        "ok": result.ok,
-        "stop_reason": result.stop_reason.value,
-        "turns": result.turns,
-        "citations": result.citations,
-        "run_id": result.tracer.run_id,
-    }
-    if result.output.startswith(("ERROR:", "DENIED:")):
-        body["ok"] = False
-        body["error"] = result.output
-        return body
-    try:
-        body["data"] = json.loads(result.output)
-    except json.JSONDecodeError:
-        body["ok"] = False
-        body["error"] = result.output
-    return body
-
-
-@app.get("/api/health")
+@app.get("/api/health", tags=["platform"])
 def health() -> dict[str, Any]:
+    """Platform and per-feature health. A sick feature is visible here."""
+    unhealthy = [lf.key for lf in features.loaded.values() if not lf.healthy]
     return {
-        "status": "ok",
-        "dataset_version": rations.DATASET_VERSION,
-        "sources": rations.SOURCES,
-        "max_day": rations.MAX_DAY,
+        "status": "degraded" if (unhealthy or features.failed) else "ok",
+        "version": settings.version,
+        "features_loaded": len(features.loaded),
+        "features_unhealthy": unhealthy,
+        "features_failed": features.failed,
+        "policy_mode": settings.policy_mode,
+        "llm_enabled": settings.llm_enabled,
     }
 
 
-@app.post("/api/ration")
-def ration(req: RationRequest) -> dict[str, Any]:
-    """The first feature: enter an age, get the exact ration."""
-    return _respond(advise({"intent": "ration", "day": req.day, "birds": req.birds}))
+@app.get("/api/features", tags=["platform"])
+def feature_list() -> dict[str, Any]:
+    """What the UI builds its menu from."""
+    return features.manifest()
 
 
-@app.post("/api/plan")
-def plan(req: PlanRequest) -> dict[str, Any]:
-    """Total feed for a batch across a span of days."""
-    return _respond(advise({
-        "intent": "plan", "day_from": req.day_from,
-        "day_to": req.day_to, "birds": req.birds,
-    }))
+@app.get("/api/tools", tags=["platform"])
+def tool_list() -> dict[str, Any]:
+    """Every tool the agent can reach, and the authority each carries."""
+    return {"tools": [
+        {"name": t.name, "effect": t.effect.value, "description": t.description,
+         "reads_untrusted": t.reads_untrusted}
+        for t in features.tools()
+    ]}
 
 
-@app.get("/api/schedule")
-def schedule() -> dict[str, Any]:
-    """The whole 0-42 day phase chart."""
-    return _respond(advise({"intent": "schedule"}))
-
-
-@app.post("/api/ask")
-def ask(req: AskRequest) -> dict[str, Any]:
-    """Free-text question, routed to the table, the model, or both."""
-    return hybrid_answer(req.question, req.birds)
-
-
-@app.get("/api/model-info")
+@app.get("/api/model-info", tags=["platform"])
 def model_info() -> dict[str, Any]:
-    """Whether a model is wired up, and what it is allowed to do."""
     return {
-        "copy_generation": llm.status(),
+        "llm": llm.status(),
         "routes": {
             "factual": "published table only; no model involved",
             "explanatory": "model only; no published number at stake",
             "diagnostic": "table first, then the model reasons over its figures",
         },
-        "constraint": "the model never originates a nutrient value",
+        "constraint": "the model never originates a value a farmer acts on",
     }
 
 
-@app.get("/api/trace/{run_id}")
-def trace(run_id: str) -> dict[str, Any]:
-    """Placeholder: traces are per-request today, persisted in a later feature."""
-    return {"run_id": run_id, "note": "traces are returned inline with each response"}
-
-
 # ── Static frontend ────────────────────────────────────────────────────────
-_FRONTEND = Path(__file__).resolve().parent.parent.parent / "frontend"
+_ROOT = Path(__file__).resolve().parent.parent.parent
+_CANDIDATES = [_ROOT / "frontend" / "dist" / "poultry-360" / "browser",
+               _ROOT / "frontend"]
+_FRONTEND = next((p for p in _CANDIDATES if (p / "index.html").is_file()), None)
 
-if _FRONTEND.is_dir():
+if _FRONTEND is not None:
     @app.get("/{path:path}", include_in_schema=False)
     def serve(path: str):
         candidate = (_FRONTEND / path).resolve()

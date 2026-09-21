@@ -11,9 +11,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from data import rations
-from domain import feed
-from domain.advisor import advise, build_registry
+from features.feed import rations
+from features.feed import logic as feed
+from features.feed.advisor_compat import advise, build_registry
 from harness.agent import Agent, StopReason
 from harness.policy import Effect, Mode, Policy
 from harness.tools import Tool, ToolError, ToolRegistry

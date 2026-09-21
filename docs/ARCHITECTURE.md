@@ -18,22 +18,32 @@ prompt. If the model is replaced tomorrow, everything below still holds.
 ## Layers
 
 ```
-frontend/               farmer UI — Hindi + English, phone-first
+frontend/                     Angular 17, standalone components, lazy routes
+  src/app/core/               API client — the one place the base URL is set
+  src/app/features/<key>/     one folder per feature, lazily loaded
+
 backend/
-  api/main.py           HTTP surface, thin on purpose
-  domain/
-    feed.py             arithmetic on published numbers
-    advisor.py          wires tools into the harness
-  harness/
-    agent.py            the loop: budgets, termination, observation
-    tools.py            registry — validate, authorise, execute
-    policy.py           effects and modes; who may do what
-    tracing.py          every step recorded
-  data/rations.py       the published standards (single source of truth)
+  api/main.py                 platform surface — knows NO feature by name
+  core/
+    contracts.py              the interface every feature implements
+    registry.py               discovery, isolation, health
+    config.py                 settings from the environment
+  harness/                    agent loop, tools, policy, tracing, llm
+  features/
+    feed/                     feature 1 — owns its data, logic, routes, tools
+    health/                   feature 2 — added without touching feature 1
 ```
 
-The dependency arrow points one way: `api → domain → harness → data`. The
-harness knows nothing about poultry; the data knows nothing about agents.
+**The dependency arrow points one way:**
+
+```
+features/*  →  core/  →  harness/
+     ↑
+   api/ discovers them; it imports none of them by name
+```
+
+A feature may import `core` and `harness`. It may **never** import another
+feature — a test parses the AST of every feature file and fails if it does.
 
 ---
 
@@ -72,6 +82,45 @@ published table.
 
 A test asserts the same question returns the same answer five times running.
 An advice app that answers differently each run is not advice.
+
+---
+
+## Extensibility: how a feature is added
+
+Adding feature N must not touch feature N−1. That is the property the whole
+structure exists for, and it is enforced by tests rather than by discipline.
+
+A feature is a package implementing four methods:
+
+| Method | Purpose |
+|---|---|
+| `info()` | identity, both languages, status |
+| `router()` | routes, mounted at `/api/<key>` |
+| `tools()` | tools for the shared agent registry, namespaced by key |
+| `selfcheck()` | returns problems; empty means healthy |
+
+`core/registry.py` discovers every package under `features/`, rejects
+collisions, runs each self-check, and mounts only the healthy ones.
+
+### What breakage looks like
+
+| Failure | Effect on the rest of the app |
+|---|---|
+| Feature fails to import | recorded in `failed_to_load`; app serves |
+| `selfcheck()` returns problems | not mounted, tools unreachable, shown unhealthy |
+| Duplicate feature key | rejected with a reason |
+| Tool name already taken | rejected with a reason |
+
+One broken feature never takes down the app a farmer is standing in a shed
+using.
+
+### The frontend follows the same shape
+
+The Angular nav is built from `/api/features` — it is data, not markup. A new
+backend feature appears in the menu with no change to the shell. Each feature
+is a lazily-loaded standalone component in its own folder.
+
+Full walkthrough: [ADDING_A_FEATURE.md](ADDING_A_FEATURE.md).
 
 ---
 
