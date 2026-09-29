@@ -33,17 +33,24 @@ from pydantic import BaseModel, Field
 from core.contracts import FeatureInfo, ToolSpec
 from harness.policy import Effect
 
-from . import detector
+from . import detector, video
 
 KEY = "count"
 
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
+MAX_VIDEO_UPLOAD_BYTES = 80 * 1024 * 1024
 
 
 class CountRequest(BaseModel):
     """A photo as base64. Kept simple so the Angular client can post JSON."""
 
     image_base64: str = Field(..., min_length=32)
+
+
+class VideoRequest(BaseModel):
+    """A short clip as base64. One minute or less."""
+
+    video_base64: str = Field(..., min_length=64)
 
 
 class ConfirmRequest(BaseModel):
@@ -58,17 +65,17 @@ class ConfirmRequest(BaseModel):
     note: str = Field("", max_length=280)
 
 
-def _decode(payload: str) -> bytes:
+def _decode(payload: str, limit: int = MAX_UPLOAD_BYTES, what: str = "image") -> bytes:
     if "," in payload[:64] and payload.lstrip().startswith("data:"):
         payload = payload.split(",", 1)[1]        # strip a data: URL prefix
     try:
         raw = base64.b64decode(payload, validate=True)
     except (binascii.Error, ValueError) as exc:
-        raise HTTPException(400, "The image could not be decoded.") from exc
+        raise HTTPException(400, f"The {what} could not be decoded.") from exc
     if not raw:
-        raise HTTPException(400, "The image was empty.")
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, "That photo is too large. Please send a smaller one.")
+        raise HTTPException(400, f"The {what} was empty.")
+    if len(raw) > limit:
+        raise HTTPException(413, f"That {what} is too large. Please send a smaller one.")
     return raw
 
 
@@ -80,12 +87,14 @@ def _tips() -> dict:
             "Take it in daylight or with the shed lights on.",
             "Hold the phone steady; a blurred photo counts badly.",
             "If the birds are packed together, take two photos of half the shed each.",
+            "For a video: walk slowly in one continuous take, under a minute.",
         ],
         "hi": [
             "थोड़ा पीछे खड़े हों ताकि पूरा झुंड फ़्रेम में आए।",
             "दिन की रोशनी में या शेड की लाइट जलाकर लें।",
             "फ़ोन स्थिर रखें; धुंधली फ़ोटो सही नहीं गिनती।",
             "पक्षी पास-पास हों तो आधे-आधे शेड की दो फ़ोटो लें।",
+            "वीडियो के लिए: धीरे-धीरे चलते हुए एक ही बार में, एक मिनट से कम।",
         ],
     }
 
@@ -98,8 +107,8 @@ class CountFeature:
             key=KEY,
             name_en="Count the flock",
             name_hi="झुंड गिनें",
-            summary_en="Photograph the shed and check the count by eye.",
-            summary_hi="शेड की फ़ोटो लें और गिनती आँख से जाँचें।",
+            summary_en="Photo or short video of the shed; check the count by eye.",
+            summary_hi="शेड की फ़ोटो या छोटा वीडियो; गिनती आँख से जाँचें।",
             version="0.1.0",
             status="beta" if detector.available() else "planned",
             icon="📷",
@@ -114,7 +123,11 @@ class CountFeature:
 
         @router.get("/tips")
         def tips() -> dict:
-            return {"tips": _tips(), "model_ready": detector.available()}
+            return {
+                "tips": _tips(),
+                "model_ready": detector.available(),
+                "video_ready": video.available(),
+            }
 
         @router.post("/photo")
         def count_photo(request: CountRequest) -> dict:
@@ -138,6 +151,43 @@ class CountFeature:
                 "crowding": result.crowding,
                 "image": {"width": result.width, "height": result.height},
                 "boxes": [b.as_dict() for b in result.boxes],
+                "note": {"en": result.note_en, "hi": result.note_hi},
+                "needs_confirmation": True,
+                "tips": _tips() if result.quality in {"low", "none"} else None,
+            }
+
+        @router.post("/video")
+        def count_from_video(request: VideoRequest) -> dict:
+            """Count across a short clip.
+
+            Slower than a photo because every sampled frame runs the detector,
+            but it sees birds a single frame cannot. The response shape matches
+            /photo so the UI handles both the same way.
+            """
+            if not video.available():
+                raise HTTPException(
+                    503,
+                    "Video counting is not available on this server. "
+                    "Send a photo instead, or enter the number by hand.",
+                )
+            raw = _decode(
+                request.video_base64, MAX_VIDEO_UPLOAD_BYTES, "video"
+            )
+            try:
+                result = video.count_video(raw)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+
+            return {
+                "counted": result.counted,
+                "range": {"low": result.low, "high": result.high},
+                "clear": result.clear,
+                "quality": result.quality,
+                "motion": result.motion,
+                "frames_sampled": result.frames_sampled,
+                "duration_s": result.duration_s,
+                "peak_frame_count": result.peak_frame_count,
+                "tracks": result.tracks,
                 "note": {"en": result.note_en, "hi": result.note_hi},
                 "needs_confirmation": True,
                 "tips": _tips() if result.quality in {"low", "none"} else None,

@@ -16,6 +16,11 @@ interface CountResponse {
   note: { en: string; hi: string };
   needs_confirmation: boolean;
   tips: { en: string[]; hi: string[] } | null;
+  /** Video only. Absent for a photo. */
+  motion?: 'steady' | 'moving' | 'fast';
+  frames_sampled?: number;
+  duration_s?: number;
+  peak_frame_count?: number;
 }
 
 /**
@@ -36,15 +41,28 @@ interface CountResponse {
 
       <label class="pick">
         <input type="file" accept="image/*" capture="environment"
-               (change)="onFile($event)" hidden />
-        <span>📷 फ़ोटो चुनें · Choose photo</span>
+               (change)="onFile($event, 'photo')" hidden />
+        <span>📷 फ़ोटो लें · Take a photo</span>
       </label>
 
+      <label class="pick video">
+        <input type="file" accept="video/*" capture="environment"
+               (change)="onFile($event, 'video')" hidden />
+        <span>🎥 वीडियो लें · Record a video</span>
+      </label>
+      <div class="hint tiny">
+        वीडियो में ज़्यादा पक्षी मिलते हैं · a video finds more birds than a photo
+      </div>
+
       <div class="err" *ngIf="error()">{{ error() }}</div>
-      <div class="hint" *ngIf="busy()">गिन रहे हैं… · Counting…</div>
+      <div class="hint" *ngIf="busy()">
+        {{ mode() === 'video'
+            ? 'वीडियो देख रहे हैं… इसमें कुछ समय लगता है · Watching the video…'
+            : 'गिन रहे हैं… · Counting…' }}
+      </div>
     </div>
 
-    <div class="card" *ngIf="preview() as src">
+    <div class="card" *ngIf="mode() === 'photo' && preview() as src">
       <div class="frame">
         <img [src]="src" (load)="onImageLoad($event)" alt="flock" />
         <div class="box" *ngFor="let b of scaledBoxes()"
@@ -68,6 +86,13 @@ interface CountResponse {
         <b>{{ qualityHi(r.quality) }}</b> · {{ qualityEn(r.quality) }}
         <span *ngIf="r.range.low !== r.range.high">
           ({{ r.range.low }}–{{ r.range.high }})
+        </span>
+      </div>
+
+      <div class="vstats" *ngIf="r.frames_sampled">
+        <span>{{ r.frames_sampled }} फ़्रेम देखे · frames checked</span>
+        <span *ngIf="r.peak_frame_count as p">
+          एक फ़्रेम में सबसे ज़्यादा {{ p }} · best single frame {{ p }}
         </span>
       </div>
 
@@ -103,6 +128,10 @@ interface CountResponse {
     .pick{display:block;margin:12px 0}
     .pick span{display:block;text-align:center;background:var(--accent);color:#fff;
                padding:16px;border-radius:12px;font-size:18px;font-weight:600}
+    .pick.video span{background:#0f766e}
+    .tiny{font-size:13px;text-align:center;margin-top:-4px}
+    .vstats{display:flex;flex-wrap:wrap;gap:12px;color:var(--muted);font-size:14px;
+            margin:8px 0}
     .frame{position:relative;display:inline-block;max-width:100%}
     .frame img{max-width:100%;display:block;border-radius:10px}
     .box{position:absolute;border:2px solid #f0a020;border-radius:3px;pointer-events:none}
@@ -134,6 +163,7 @@ export class CountComponent {
   private api = inject(ApiService);
 
   preview = signal<string | null>(null);
+  mode = signal<'photo' | 'video'>('photo');
   result = signal<CountResponse | null>(null);
   saved = signal<{ message: { en: string; hi: string }; model_proposed: number; difference: number } | null>(null);
   error = signal('');
@@ -162,27 +192,34 @@ export class CountComponent {
     this.shown.set({ w: img.clientWidth, h: img.clientHeight });
   }
 
-  onFile(event: Event): void {
+  onFile(event: Event, mode: 'photo' | 'video'): void {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (!file) return;
 
+    this.mode.set(mode);
     this.error.set('');
     this.result.set(null);
     this.saved.set(null);
+    this.preview.set(null);
 
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      this.preview.set(dataUrl);
-      this.send(dataUrl);
+      if (mode === 'photo') this.preview.set(dataUrl);
+      this.send(dataUrl, mode);
     };
-    reader.onerror = () => this.error.set('फ़ोटो पढ़ी नहीं गई · Could not read that photo');
+    reader.onerror = () =>
+      this.error.set('फ़ाइल पढ़ी नहीं गई · Could not read that file');
     reader.readAsDataURL(file);
   }
 
-  private send(dataUrl: string): void {
+  private send(dataUrl: string, mode: 'photo' | 'video'): void {
     this.busy.set(true);
-    this.api.post<CountResponse>('count', 'photo', { image_base64: dataUrl })
+    const path = mode === 'video' ? 'video' : 'photo';
+    const body = mode === 'video'
+      ? { video_base64: dataUrl }
+      : { image_base64: dataUrl };
+    this.api.post<CountResponse>('count', path, body)
       .subscribe({
         next: (r) => {
           this.result.set(r);

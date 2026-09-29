@@ -10,3 +10,4 @@ httpx>=0.27.0
 pillow>=10.0.0
 numpy>=1.26.0
 onnxruntime>=1.17.0
+imageio[ffmpeg]>=2.34.0   # video decoding, bundles its own ffmpeg
