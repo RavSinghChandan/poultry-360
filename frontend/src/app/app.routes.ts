@@ -19,5 +19,10 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/health/health.component').then((m) => m.HealthComponent),
   },
+  {
+    path: 'count',
+    loadComponent: () =>
+      import('./features/count/count.component').then((m) => m.CountComponent),
+  },
   { path: '**', redirectTo: 'feed' },
 ];

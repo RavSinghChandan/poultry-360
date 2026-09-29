@@ -3,3 +3,10 @@ uvicorn[standard]>=0.29.0
 pydantic>=2.7.1
 pytest>=8.0.0
 httpx>=0.27.0
+
+# Feature 3 (count): photo bird counting. If these are absent the feature
+# reports status "planned", its routes answer 503 honestly, and the rest of
+# the app serves normally.
+pillow>=10.0.0
+numpy>=1.26.0
+onnxruntime>=1.17.0
