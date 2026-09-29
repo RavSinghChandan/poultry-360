@@ -88,12 +88,31 @@ class FeatureRegistry:
     def tools(self) -> list[ToolSpec]:
         return [t for lf in self.healthy() for t in lf.feature.tools()]
 
-    def manifest(self) -> dict[str, Any]:
-        """What /api/features returns, and what the UI renders its menu from."""
+    def manifest(self, lang: str | None = None) -> dict[str, Any]:
+        """What /api/features returns, and what the UI renders its menu from.
+
+        `name` and `summary` are resolved for the reader. A feature that has
+        not been migrated to the Text map falls back to its name_en/name_hi,
+        so old and new features can coexist while the migration happens.
+        """
+        from core.languages import DEFAULT_LANGUAGE, normalise, resolve
+
+        code = normalise(lang or DEFAULT_LANGUAGE)
+
+        def pick(text: dict, legacy_en: str, legacy_hi: str) -> str:
+            if text:
+                return resolve(text, code)
+            return legacy_hi if code == "hi" else legacy_en
+
         return {
+            "lang": code,
             "features": [
                 {
                     "key": lf.key,
+                    "name": pick(lf.info.names, lf.info.name_en, lf.info.name_hi),
+                    "summary": pick(
+                        lf.info.summaries, lf.info.summary_en, lf.info.summary_hi
+                    ),
                     "name_en": lf.info.name_en,
                     "name_hi": lf.info.name_hi,
                     "summary_en": lf.info.summary_en,

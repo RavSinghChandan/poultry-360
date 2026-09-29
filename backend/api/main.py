@@ -65,9 +65,22 @@ def health() -> dict[str, Any]:
 
 
 @app.get("/api/features", tags=["platform"])
-def feature_list() -> dict[str, Any]:
-    """What the UI builds its menu from."""
-    return features.manifest()
+def feature_list(lang: str | None = None) -> dict[str, Any]:
+    """What the UI builds its menu from, in the reader's language."""
+    return features.manifest(lang)
+
+
+@app.get("/api/languages", tags=["platform"])
+def languages() -> dict:
+    """Languages the app speaks, for the picker.
+
+    The client sends its choice as `lang` on each call; nothing is stored
+    server-side, so the same deployment serves a Bengali and a Bhojpuri
+    farmer at the same time.
+    """
+    from core.languages import DEFAULT_LANGUAGE, catalogue
+
+    return {"languages": catalogue(), "default": DEFAULT_LANGUAGE}
 
 
 @app.get("/api/tools", tags=["platform"])

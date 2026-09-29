@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { ApiService, FeatureInfo } from './core/api.service';
+import { I18nService } from './core/i18n.service';
 
 @Component({
   selector: 'app-root',
@@ -10,15 +11,29 @@ import { ApiService, FeatureInfo } from './core/api.service';
   template: `
     <header>
       <div class="wrap">
-        <h1>🐔 Poultry 360</h1>
-        <div class="sub">मुर्गी पालन सहायक · every answer from a cited source</div>
+        <div class="top">
+          <h1>🐔 Poultry 360</h1>
+          <select class="lang"
+                  (change)="pick($any($event.target).value)"
+                  [attr.aria-label]="i18n.t()('language')">
+            <!-- [selected] rather than [value] on the select: the options are
+                 rendered by *ngFor, so a value bound before they exist is
+                 dropped and the picker falls back to showing the first entry
+                 even though the app is running in the saved language. -->
+            <option *ngFor="let l of i18n.available()" [value]="l.code"
+                    [selected]="l.code === i18n.lang()">
+              {{ l.native }}
+            </option>
+          </select>
+        </div>
+        <div class="sub">every answer from a cited source</div>
       </div>
     </header>
 
     <nav class="wrap" *ngIf="features().length > 1">
       <a *ngFor="let f of features()" [routerLink]="'/' + f.key"
          routerLinkActive="on" class="tab" [class.off]="!f.healthy">
-        {{ f.icon }} {{ f.name_hi }}
+        {{ f.icon }} {{ f.name }}
         <em *ngIf="f.status !== 'live'">{{ f.status }}</em>
       </a>
     </nav>
@@ -26,6 +41,11 @@ import { ApiService, FeatureInfo } from './core/api.service';
     <main class="wrap"><router-outlet /></main>
   `,
   styles: [`
+    .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .lang{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.45);
+          border-radius:10px;padding:8px 10px;font-size:16px;font-weight:600;
+          min-height:44px}
+    .lang option{color:#111}
     nav{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
     .tab{flex:1;min-width:140px;text-align:center;padding:12px;border-radius:12px;
          background:#fff;border:2px solid var(--line);color:var(--ink);
@@ -37,14 +57,24 @@ import { ApiService, FeatureInfo } from './core/api.service';
 })
 export class AppComponent {
   private api = inject(ApiService);
+  i18n = inject(I18nService);
   features = signal<FeatureInfo[]>([]);
 
-  constructor() {
-    // The menu is data, not markup: a new backend feature appears here with
-    // no change to this component.
-    this.api.features().subscribe({
+  pick(code: string): void {
+    this.i18n.set(code);
+    this.load();           // menu labels come from the server, so re-fetch
+  }
+
+  private load(): void {
+    this.api.features(this.i18n.lang()).subscribe({
       next: (r) => this.features.set(r.features),
       error: () => {},
     });
+  }
+
+  constructor() {
+    // The menu is data, not markup: a new backend feature appears here with
+    // no change to this component, and its label arrives already translated.
+    this.load();
   }
 }

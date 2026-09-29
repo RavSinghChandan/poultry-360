@@ -39,7 +39,10 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 
-from .detector import CONF_CLEAR, CONF_MIN, Box, count_birds
+from core.languages import Text
+
+from . import strings
+from .detector import CONF_CLEAR, CONF_MIN, Box, CountError, count_birds
 
 MAX_VIDEO_BYTES = 80 * 1024 * 1024
 MAX_DURATION_S = 75.0            # a farmer's clip, not a security recording
@@ -76,8 +79,7 @@ class VideoResult:
     peak_frame_count: int
     naive_sum: int                # what summing frames would have said
     motion: str                   # "steady" | "moving" | "fast"
-    note_en: str
-    note_hi: str
+    note: Text
     quality: str
 
 
@@ -209,7 +211,7 @@ def _motion(matched_ratio: float, cuts: int) -> str:
 def count_video(video_bytes: bytes) -> VideoResult:
     """Decode, sample, detect and track. Raises ValueError on a bad video."""
     if len(video_bytes) > MAX_VIDEO_BYTES:
-        raise ValueError("That video is too large. Please send a shorter clip.")
+        raise CountError(strings.ERR_VIDEO_BIG)
 
     import imageio.v2 as iio
     from PIL import Image
@@ -221,21 +223,22 @@ def count_video(video_bytes: bytes) -> VideoResult:
     try:
         duration = _probe_duration(path)
         if duration > MAX_DURATION_S:
-            raise ValueError(
-                f"That video is {duration:.0f} seconds. "
-                f"Please send one under {int(MAX_DURATION_S)} seconds."
-            )
+            limit = int(MAX_DURATION_S)
+            raise CountError({
+                code: template.format(duration=duration, limit=limit)
+                for code, template in strings.ERR_VIDEO_LONG.items()
+            })
         try:
             reader = iio.get_reader(path)
         except Exception as exc:
-            raise ValueError("That file could not be read as a video.") from exc
+            raise CountError(strings.ERR_NOT_VIDEO) from exc
 
         try:
             total = reader.count_frames()
         except Exception:
             total = 0
         if not total or total < 2:
-            raise ValueError("That video has too few frames to count.")
+            raise CountError(strings.ERR_VIDEO_SHORT)
 
         step = max(1, total // TARGET_SAMPLES)
         wanted = set(range(0, total, step))
@@ -266,7 +269,7 @@ def count_video(video_bytes: bytes) -> VideoResult:
             Image.fromarray(frame).save(buffer, format="JPEG", quality=88)
             try:
                 result = count_birds(buffer.getvalue())
-            except ValueError:
+            except CountError:
                 continue
 
             # After a cut nothing on screen is the same bird, so no track may
@@ -293,7 +296,7 @@ def count_video(video_bytes: bytes) -> VideoResult:
             pass
 
     if not per_frame:
-        raise ValueError("No frames in that video could be read.")
+        raise CountError(strings.ERR_VIDEO_SHORT)
 
     believed = [t for t in tracks if t.hits >= MIN_TRACK_HITS]
     clear = sum(1 for t in believed if t.clear)
@@ -303,7 +306,7 @@ def count_video(video_bytes: bytes) -> VideoResult:
     ratio = matched_events / detection_events if detection_events else 0.0
     motion = _motion(ratio, cuts)
     quality = _quality(counted, clear, motion, sampled)
-    note_en, note_hi = _notes(counted, clear, peak, motion, quality)
+    note = _notes(counted, clear, peak, motion, quality)
 
     return VideoResult(
         counted=counted,
@@ -316,8 +319,7 @@ def count_video(video_bytes: bytes) -> VideoResult:
         peak_frame_count=peak,
         naive_sum=naive,
         motion=motion,
-        note_en=note_en,
-        note_hi=note_hi,
+        note=note,
         quality=quality,
     )
 
@@ -335,34 +337,18 @@ def _quality(counted: int, clear: int, motion: str, sampled: int) -> str:
     return "high"
 
 
-def _notes(counted, clear, peak, motion, quality) -> tuple[str, str]:
+def _notes(counted, clear, peak, motion, quality) -> Text:
+    """What to tell the farmer about this video, in every language."""
     if counted == 0:
-        return (
-            "No birds were found in this video. Try filming in better light, "
-            "moving the phone slowly.",
-            "इस वीडियो में कोई पक्षी नहीं मिला। बेहतर रोशनी में, फ़ोन धीरे-धीरे "
-            "घुमाकर वीडियो लें।",
-        )
+        return strings.NOTE_NONE
     if motion == "fast":
-        return (
-            "This video jumps between separate views, so birds cannot be "
-            "followed across it and this total is not reliable. Film one "
-            "continuous clip, walking slowly, and count one shed at a time.",
-            "यह वीडियो अलग-अलग दृश्यों में कूदता है, इसलिए पक्षियों का पीछा नहीं "
-            "किया जा सकता और यह संख्या भरोसेमंद नहीं है। एक ही बार में, धीरे "
-            "चलकर, एक शेड का वीडियो लें।",
-        )
+        return strings.NOTE_VIDEO_CUTS
     if counted > peak:
-        return (
-            f"{counted} birds were followed across the video; the busiest "
-            f"single frame showed {peak}. Moving the camera found birds a "
-            "photo would have missed. Please confirm the number.",
-            f"वीडियो में {counted} पक्षी गिने गए; एक फ़्रेम में सबसे ज़्यादा "
-            f"{peak} दिखे। कैमरा घुमाने से वे पक्षी मिले जो फ़ोटो में छूट जाते। "
-            "कृपया संख्या की पुष्टि करें।",
-        )
-    return (
-        f"{counted} birds were followed across the video. Please confirm "
-        "the number.",
-        f"वीडियो में {counted} पक्षी गिने गए। कृपया संख्या की पुष्टि करें।",
-    )
+        return {
+            code: template.format(counted=counted, peak=peak)
+            for code, template in strings.NOTE_VIDEO_BETTER.items()
+        }
+    return {
+        code: template.format(counted=counted)
+        for code, template in strings.NOTE_VIDEO_PLAIN.items()
+    }

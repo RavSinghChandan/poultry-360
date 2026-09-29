@@ -51,3 +51,26 @@ bookkeeping alone cannot see them, because within each shot the tracker
 matches perfectly. A video with two or more cuts is reported as `motion:
 "fast"`, `quality: "low"`, and the farmer is told plainly that the total is
 not reliable.
+
+## Languages
+
+Bengali is the default. Hindi, Bhojpuri, Maithili and English are also
+available, and the farmer picks from a control in the header. The choice is
+kept in the browser, so it is chosen once.
+
+`core/languages.py` holds the list. A `Text` is a map from language code to
+string; features write one and the platform resolves it at the edge, so
+adding a language is adding entries to a dict rather than editing every
+feature.
+
+Each language declares a fallback, and a missing string walks that chain
+rather than showing a blank. Bhojpuri and Maithili fall back to Hindi rather
+than English, because a speaker of either reads Hindi far more easily. Every
+chain ends at English, which every string must have.
+
+`GET /api/languages` lists them. `GET /api/features?lang=bn` returns menu
+labels already translated, and every count endpoint takes a `lang` field and
+returns its note, quality label, tips and errors in that language.
+
+The older `name_en` / `name_hi` fields are still served, so a client that has
+not been updated keeps working.

@@ -31,9 +31,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from core.contracts import FeatureInfo, ToolSpec
+from core.languages import DEFAULT_LANGUAGE, normalise, resolve
 from harness.policy import Effect
 
-from . import detector, video
+from . import detector, strings, video
+from .detector import CountError
 
 KEY = "count"
 
@@ -45,12 +47,14 @@ class CountRequest(BaseModel):
     """A photo as base64. Kept simple so the Angular client can post JSON."""
 
     image_base64: str = Field(..., min_length=32)
+    lang: str = Field(DEFAULT_LANGUAGE, max_length=12)
 
 
 class VideoRequest(BaseModel):
     """A short clip as base64. One minute or less."""
 
     video_base64: str = Field(..., min_length=64)
+    lang: str = Field(DEFAULT_LANGUAGE, max_length=12)
 
 
 class ConfirmRequest(BaseModel):
@@ -63,24 +67,30 @@ class ConfirmRequest(BaseModel):
     counted: int = Field(..., ge=0, le=100_000)
     confirmed: int = Field(..., ge=0, le=100_000)
     note: str = Field("", max_length=280)
+    lang: str = Field(DEFAULT_LANGUAGE, max_length=12)
 
 
-def _decode(payload: str, limit: int = MAX_UPLOAD_BYTES, what: str = "image") -> bytes:
+def _decode(payload: str, limit: int = MAX_UPLOAD_BYTES, lang: str = DEFAULT_LANGUAGE) -> bytes:
     if "," in payload[:64] and payload.lstrip().startswith("data:"):
         payload = payload.split(",", 1)[1]        # strip a data: URL prefix
     try:
         raw = base64.b64decode(payload, validate=True)
     except (binascii.Error, ValueError) as exc:
-        raise HTTPException(400, f"The {what} could not be decoded.") from exc
+        raise HTTPException(400, resolve(strings.ERR_DECODE, lang)) from exc
     if not raw:
-        raise HTTPException(400, f"The {what} was empty.")
+        raise HTTPException(400, resolve(strings.ERR_EMPTY, lang))
     if len(raw) > limit:
-        raise HTTPException(413, f"That {what} is too large. Please send a smaller one.")
+        raise HTTPException(413, resolve(strings.ERR_TOO_LARGE, lang))
     return raw
 
 
+def _tips_for(lang: str) -> list[str]:
+    """Photo advice in the reader's language, falling back to English."""
+    return strings.TIPS.get(normalise(lang)) or strings.TIPS["en"]
+
+
 def _tips() -> dict:
-    """How to take a photo that counts well. Farmer-facing, not technical."""
+    """Legacy shape, kept so nothing that already calls it breaks."""
     return {
         "en": [
             "Stand back so the whole group fits in the frame.",
@@ -105,13 +115,15 @@ class CountFeature:
     def info(self) -> FeatureInfo:
         return FeatureInfo(
             key=KEY,
-            name_en="Count the flock",
-            name_hi="झुंड गिनें",
-            summary_en="Photo or short video of the shed; check the count by eye.",
-            summary_hi="शेड की फ़ोटो या छोटा वीडियो; गिनती आँख से जाँचें।",
+            name_en=strings.NAME["en"],
+            name_hi=strings.NAME["hi"],
+            summary_en=strings.SUMMARY["en"],
+            summary_hi=strings.SUMMARY["hi"],
             version="0.1.0",
             status="beta" if detector.available() else "planned",
             icon="📷",
+            names=strings.NAME,
+            summaries=strings.SUMMARY,
             sources=[
                 "YOLO11n (COCO class 14 'bird'), Ultralytics, AGPL-3.0",
                 "Count is a proposal; the recorded figure is the farmer's confirmation.",
@@ -122,26 +134,26 @@ class CountFeature:
         router = APIRouter()
 
         @router.get("/tips")
-        def tips() -> dict:
+        def tips(lang: str = DEFAULT_LANGUAGE) -> dict:
             return {
-                "tips": _tips(),
+                "tips": _tips_for(lang),
+                "lang": normalise(lang),
                 "model_ready": detector.available(),
                 "video_ready": video.available(),
             }
 
         @router.post("/photo")
         def count_photo(request: CountRequest) -> dict:
+            lang = normalise(request.lang)
             if not detector.available():
                 raise HTTPException(
-                    503,
-                    "Photo counting is not available on this server. "
-                    "Enter the number by hand.",
+                    503, resolve(strings.UNAVAILABLE_PHOTO, lang)
                 )
-            raw = _decode(request.image_base64)
+            raw = _decode(request.image_base64, MAX_UPLOAD_BYTES, lang)
             try:
                 result = detector.count_birds(raw)
-            except ValueError as exc:
-                raise HTTPException(400, str(exc)) from exc
+            except CountError as exc:
+                raise HTTPException(400, resolve(exc.text, lang)) from exc
 
             return {
                 "counted": result.best,
@@ -151,9 +163,13 @@ class CountFeature:
                 "crowding": result.crowding,
                 "image": {"width": result.width, "height": result.height},
                 "boxes": [b.as_dict() for b in result.boxes],
-                "note": {"en": result.note_en, "hi": result.note_hi},
+                "note": resolve(result.note, lang),
+                "quality_label": resolve(
+                    strings.QUALITY.get(result.quality, {}), lang
+                ),
+                "lang": lang,
                 "needs_confirmation": True,
-                "tips": _tips() if result.quality in {"low", "none"} else None,
+                "tips": _tips_for(lang) if result.quality in {"low", "none"} else None,
             }
 
         @router.post("/video")
@@ -164,19 +180,16 @@ class CountFeature:
             but it sees birds a single frame cannot. The response shape matches
             /photo so the UI handles both the same way.
             """
+            lang = normalise(request.lang)
             if not video.available():
                 raise HTTPException(
-                    503,
-                    "Video counting is not available on this server. "
-                    "Send a photo instead, or enter the number by hand.",
+                    503, resolve(strings.UNAVAILABLE_VIDEO, lang)
                 )
-            raw = _decode(
-                request.video_base64, MAX_VIDEO_UPLOAD_BYTES, "video"
-            )
+            raw = _decode(request.video_base64, MAX_VIDEO_UPLOAD_BYTES, lang)
             try:
                 result = video.count_video(raw)
-            except ValueError as exc:
-                raise HTTPException(400, str(exc)) from exc
+            except CountError as exc:
+                raise HTTPException(400, resolve(exc.text, lang)) from exc
 
             return {
                 "counted": result.counted,
@@ -188,24 +201,34 @@ class CountFeature:
                 "duration_s": result.duration_s,
                 "peak_frame_count": result.peak_frame_count,
                 "tracks": result.tracks,
-                "note": {"en": result.note_en, "hi": result.note_hi},
+                "note": resolve(result.note, lang),
+                "quality_label": resolve(
+                    strings.QUALITY.get(result.quality, {}), lang
+                ),
+                "lang": lang,
                 "needs_confirmation": True,
-                "tips": _tips() if result.quality in {"low", "none"} else None,
+                "tips": _tips_for(lang) if result.quality in {"low", "none"} else None,
             }
 
         @router.post("/confirm")
         def confirm(request: ConfirmRequest) -> dict:
             """Record the farmer's figure, and how far the model was out."""
+            lang = normalise(request.lang)
             delta = request.confirmed - request.counted
             return {
                 "recorded": request.confirmed,
                 "model_proposed": request.counted,
                 "difference": delta,
                 "source": "farmer_confirmed",
-                "message": {
-                    "en": f"Recorded {request.confirmed} birds.",
-                    "hi": f"{request.confirmed} पक्षी दर्ज किए गए।",
-                },
+                "lang": lang,
+                "message": resolve(
+                    {c: t.format(n=request.confirmed)
+                     for c, t in strings.RECORDED.items()}, lang
+                ),
+                "model_note": resolve(
+                    {c: t.format(n=request.counted)
+                     for c, t in strings.MODEL_PROPOSED.items()}, lang
+                ),
             }
 
         return router

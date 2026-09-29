@@ -26,6 +26,7 @@ from typing import Any, Callable, Protocol, runtime_checkable
 
 from fastapi import APIRouter
 
+from core.languages import Text
 from harness.policy import Effect
 
 
@@ -53,6 +54,13 @@ class FeatureInfo:
     status: str = "live"          # live | beta | planned
     icon: str = "🐔"
     sources: list[str] = field(default_factory=list)
+
+    # Every language, for features that have been migrated. Empty means the
+    # feature still only carries name_en/name_hi, and the platform falls back
+    # to those. This lets a new language arrive without editing every feature
+    # at once.
+    names: Text = field(default_factory=dict)
+    summaries: Text = field(default_factory=dict)
 
 
 @runtime_checkable

@@ -2,6 +2,7 @@ import { Component, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
+import { I18nService } from '../../core/i18n.service';
 
 interface Box { x1: number; y1: number; x2: number; y2: number; confidence: number; }
 
@@ -13,9 +14,11 @@ interface CountResponse {
   crowding: number;
   image: { width: number; height: number };
   boxes: Box[];
-  note: { en: string; hi: string };
+  note: string;
+  quality_label: string;
+  lang: string;
   needs_confirmation: boolean;
-  tips: { en: string[]; hi: string[] } | null;
+  tips: string[] | null;
   /** Video only. Absent for a photo. */
   motion?: 'steady' | 'moving' | 'fast';
   frames_sampled?: number;
@@ -37,28 +40,24 @@ interface CountResponse {
   imports: [CommonModule, FormsModule],
   template: `
     <div class="card">
-      <div class="hint">शेड की फ़ोटो लें · Photograph the shed</div>
+      <div class="hint">{{ t()('prompt') }}</div>
 
       <label class="pick">
         <input type="file" accept="image/*" capture="environment"
                (change)="onFile($event, 'photo')" hidden />
-        <span>📷 फ़ोटो लें · Take a photo</span>
+        <span>{{ t()('takePhoto') }}</span>
       </label>
 
       <label class="pick video">
         <input type="file" accept="video/*" capture="environment"
                (change)="onFile($event, 'video')" hidden />
-        <span>🎥 वीडियो लें · Record a video</span>
+        <span>{{ t()('recordVideo') }}</span>
       </label>
-      <div class="hint tiny">
-        वीडियो में ज़्यादा पक्षी मिलते हैं · a video finds more birds than a photo
-      </div>
+      <div class="hint tiny">{{ t()('videoFindsMore') }}</div>
 
       <div class="err" *ngIf="error()">{{ error() }}</div>
       <div class="hint" *ngIf="busy()">
-        {{ mode() === 'video'
-            ? 'वीडियो देख रहे हैं… इसमें कुछ समय लगता है · Watching the video…'
-            : 'गिन रहे हैं… · Counting…' }}
+        {{ mode() === 'video' ? t()('watching') : t()('counting') }}
       </div>
     </div>
 
@@ -71,57 +70,51 @@ interface CountResponse {
              [style.width.px]="b.x2 - b.x1" [style.height.px]="b.y2 - b.y1"></div>
       </div>
       <div class="hint legend" *ngIf="result()">
-        <span class="k sure"></span> पक्का · clear
-        <span class="k"></span> हो सकता है · uncertain
+        <span class="k sure"></span> {{ t()('clear') }}
+        <span class="k"></span> {{ t()('uncertain') }}
       </div>
     </div>
 
     <div class="card" *ngIf="result() as r">
       <div class="big">
         <span class="n">{{ r.counted }}</span>
-        <span class="unit">पक्षी मिले · birds found</span>
+        <span class="unit">{{ t()('birdsFound') }}</span>
       </div>
 
       <div class="qual" [class]="r.quality">
-        <b>{{ qualityHi(r.quality) }}</b> · {{ qualityEn(r.quality) }}
+        <b>{{ r.quality_label }}</b>
         <span *ngIf="r.range.low !== r.range.high">
           ({{ r.range.low }}–{{ r.range.high }})
         </span>
       </div>
 
       <div class="vstats" *ngIf="r.frames_sampled">
-        <span>{{ r.frames_sampled }} फ़्रेम देखे · frames checked</span>
-        <span *ngIf="r.peak_frame_count as p">
-          एक फ़्रेम में सबसे ज़्यादा {{ p }} · best single frame {{ p }}
-        </span>
+        <span>{{ r.frames_sampled }} {{ t()('framesChecked') }}</span>
+        <span *ngIf="r.peak_frame_count as p">{{ t()('bestFrame') }} {{ p }}</span>
       </div>
 
-      <p class="note">{{ r.note.hi }}<br /><span class="hint">{{ r.note.en }}</span></p>
+      <p class="note">{{ r.note }}</p>
 
       <div class="confirm">
-        <div class="hint">सही संख्या भरें · Enter the correct number</div>
+        <div class="hint">{{ t()('enterCorrect') }}</div>
         <div class="row">
           <button (click)="bump(-1)" aria-label="less">−</button>
           <input type="number" min="0" [(ngModel)]="confirmed" />
           <button (click)="bump(1)" aria-label="more">+</button>
         </div>
         <button class="save" (click)="save()" [disabled]="saving()">
-          दर्ज करें · Record this number
+          {{ t()('recordNumber') }}
         </button>
       </div>
 
-      <ul class="tips" *ngIf="r.tips as t">
-        <li *ngFor="let tip of t.hi">{{ tip }}</li>
+      <ul class="tips" *ngIf="r.tips as tipList">
+        <li *ngFor="let tip of tipList">{{ tip }}</li>
       </ul>
     </div>
 
     <div class="card ok" *ngIf="saved() as s">
-      <b>{{ s.message.hi }}</b><br />
-      <span class="hint">{{ s.message.en }}</span>
-      <div class="hint" *ngIf="s.difference !== 0">
-        मॉडल ने {{ s.model_proposed }} गिना था ·
-        the model proposed {{ s.model_proposed }}
-      </div>
+      <b>{{ s.message }}</b>
+      <div class="hint" *ngIf="s.difference !== 0">{{ s.model_note }}</div>
     </div>
   `,
   styles: [`
@@ -161,11 +154,13 @@ interface CountResponse {
 })
 export class CountComponent {
   private api = inject(ApiService);
+  private i18n = inject(I18nService);
+  t = this.i18n.t;
 
   preview = signal<string | null>(null);
   mode = signal<'photo' | 'video'>('photo');
   result = signal<CountResponse | null>(null);
-  saved = signal<{ message: { en: string; hi: string }; model_proposed: number; difference: number } | null>(null);
+  saved = signal<{ message: string; model_note: string; model_proposed: number; difference: number } | null>(null);
   error = signal('');
   busy = signal(false);
   saving = signal(false);
@@ -209,16 +204,17 @@ export class CountComponent {
       this.send(dataUrl, mode);
     };
     reader.onerror = () =>
-      this.error.set('फ़ाइल पढ़ी नहीं गई · Could not read that file');
+      this.error.set(this.t()('readFail'));
     reader.readAsDataURL(file);
   }
 
   private send(dataUrl: string, mode: 'photo' | 'video'): void {
     this.busy.set(true);
     const path = mode === 'video' ? 'video' : 'photo';
+    const lang = this.i18n.lang();
     const body = mode === 'video'
-      ? { video_base64: dataUrl }
-      : { image_base64: dataUrl };
+      ? { video_base64: dataUrl, lang }
+      : { image_base64: dataUrl, lang };
     this.api.post<CountResponse>('count', path, body)
       .subscribe({
         next: (r) => {
@@ -227,7 +223,7 @@ export class CountComponent {
           this.busy.set(false);
         },
         error: (e) => {
-          this.error.set(e?.error?.detail ?? 'गिनती नहीं हो सकी · Counting failed');
+          this.error.set(e?.error?.detail ?? this.t()('countFail'));
           this.busy.set(false);
         },
       });
@@ -244,23 +240,15 @@ export class CountComponent {
     this.api.post<any>('count', 'confirm', {
       counted: r.counted,
       confirmed: this.confirmed,
+      lang: this.i18n.lang(),
     }).subscribe({
       next: (s) => { this.saved.set(s); this.saving.set(false); },
       error: () => {
-        this.error.set('दर्ज नहीं हुआ · Could not record');
+        this.error.set(this.t()('saveFail'));
         this.saving.set(false);
       },
     });
   }
 
-  qualityHi(q: string): string {
-    return { high: 'भरोसेमंद', medium: 'ठीक-ठाक', low: 'जाँच ज़रूरी', none: 'कुछ नहीं मिला' }[q] ?? '';
-  }
 
-  qualityEn(q: string): string {
-    return {
-      high: 'looks reliable', medium: 'reasonable',
-      low: 'please check carefully', none: 'nothing found',
-    }[q] ?? '';
-  }
 }

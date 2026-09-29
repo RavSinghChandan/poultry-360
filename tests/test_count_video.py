@@ -189,11 +189,14 @@ def test_video_endpoint_matches_the_photo_response_shape(tmp_path):
         assert key in body
 
 
-def test_video_note_is_bilingual(tmp_path):
+def test_video_note_comes_back_in_the_requested_language(tmp_path):
     path = make_video(tmp_path / "drift.mp4")
     payload = base64.b64encode(path.read_bytes()).decode()
-    body = client.post("/api/count/video", json={"video_base64": payload}).json()
-    assert body["note"]["en"] and body["note"]["hi"]
+    bn = client.post("/api/count/video",
+                     json={"video_base64": payload, "lang": "bn"}).json()
+    en = client.post("/api/count/video",
+                     json={"video_base64": payload, "lang": "en"}).json()
+    assert isinstance(bn["note"], str) and bn["note"] != en["note"]
 
 
 def test_rejects_a_file_that_is_not_a_video():
@@ -207,3 +210,11 @@ def test_rejects_unreadable_base64():
 
 def test_tips_endpoint_reports_video_readiness():
     assert "video_ready" in client.get("/api/count/tips").json()
+
+
+def test_video_errors_are_bilingual():
+    """A farmer who reads no English must still understand a failure."""
+    payload = base64.b64encode(b"not a video" * 20).decode()
+    detail = client.post("/api/count/video", json={"video_base64": payload}).json()["detail"]
+    assert any("ऀ" <= ch <= "ॿ" for ch in detail), \
+        f"error is English-only: {detail!r}"

@@ -20,6 +20,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from core.languages import Text
+
+from . import strings
+
 BIRD_CLASS = 14           # COCO "bird"
 INPUT_SIZE = 640
 CONF_MIN = 0.20           # below this, boxes are noise on farm photos
@@ -29,6 +33,17 @@ CROWD_MIN_BIRDS = 6       # below this, overlap is framing, not occlusion
 MAX_PIXELS = 30_000_000   # refuse absurd uploads before decoding
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "yolo11n.onnx")
+
+
+class CountError(ValueError):
+    """A failure with a message in every language.
+
+    Subclasses ValueError so existing `except ValueError` handlers still work.
+    """
+
+    def __init__(self, text: Text):
+        self.text = text
+        super().__init__(text.get("en", "count failed"))
 
 
 @dataclass(frozen=True)
@@ -57,8 +72,7 @@ class CountResult:
     width: int
     height: int
     crowding: float       # 0..1, share of detections that overlap another
-    note_en: str
-    note_hi: str
+    note: Text
 
     @property
     def low(self) -> int:
@@ -216,13 +230,13 @@ def count_birds(image_bytes: bytes) -> CountResult:
         image.verify()                       # cheap structural check
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     except (UnidentifiedImageError, OSError) as exc:
-        raise ValueError("That file is not a readable image.") from exc
+        raise CountError(strings.ERR_NOT_IMAGE) from exc
 
     width, height = image.size
     if width * height > MAX_PIXELS:
-        raise ValueError("That image is too large. Please send a smaller photo.")
+        raise CountError(strings.ERR_IMAGE_BIG)
     if width < 64 or height < 64:
-        raise ValueError("That image is too small to count birds in.")
+        raise CountError(strings.ERR_IMAGE_SMALL)
 
     canvas, ratio, ox, oy = _letterbox(image)
     tensor = np.asarray(canvas, np.float32).transpose(2, 0, 1)[None] / 255.0
@@ -260,7 +274,7 @@ def count_birds(image_bytes: bytes) -> CountResult:
 
     clear = sum(1 for b in boxes if b.confidence >= CONF_CLEAR)
     crowding = _crowding(boxes)
-    note_en, note_hi = _notes(len(boxes), clear, crowding)
+    note = _notes(len(boxes), clear, crowding)
 
     return CountResult(
         clear=clear,
@@ -269,36 +283,23 @@ def count_birds(image_bytes: bytes) -> CountResult:
         width=width,
         height=height,
         crowding=round(crowding, 3),
-        note_en=note_en,
-        note_hi=note_hi,
+        note=note,
     )
 
 
-def _notes(total: int, clear: int, crowding: float) -> tuple[str, str]:
-    """Say plainly what the number is worth. Never claim certainty."""
+def _notes(total: int, clear: int, crowding: float) -> Text:
+    """Say plainly what the number is worth, in every language.
+
+    Returns a Text; the route resolves it for the reader. Formatting happens
+    per language so number placement can differ between them.
+    """
     if total == 0:
-        return (
-            "No birds were found. Try a photo taken from further back in "
-            "better light.",
-            "कोई पक्षी नहीं मिला। थोड़ा पीछे से, अच्छी रोशनी में फ़ोटो लें।",
-        )
+        return strings.NOTE_NONE
     if crowding > 0.35 and total >= CROWD_MIN_BIRDS:
-        return (
-            "The birds are packed closely, so some behind others were "
-            "probably missed. This is likely an undercount — please check "
-            "and correct it.",
-            "पक्षी पास-पास हैं, इसलिए पीछे वाले छूट सकते हैं। गिनती कम हो सकती "
-            "है — कृपया जाँच कर सुधारें।",
-        )
+        return strings.NOTE_CROWDED
     if total > clear:
-        return (
-            f"{clear} birds are clear; {total - clear} more are uncertain. "
-            "Check the boxes and correct the number if needed.",
-            f"{clear} पक्षी स्पष्ट हैं; {total - clear} पक्के नहीं। डिब्बे देखकर "
-            "संख्या सुधारें।",
-        )
-    return (
-        "All detected birds were clear in this photo. Please still confirm "
-        "the number.",
-        "इस फ़ोटो में सभी पक्षी स्पष्ट थे। फिर भी संख्या की पुष्टि करें।",
-    )
+        return {
+            code: template.format(clear=clear, rest=total - clear)
+            for code, template in strings.NOTE_SOME_UNCERTAIN.items()
+        }
+    return strings.NOTE_ALL_CLEAR

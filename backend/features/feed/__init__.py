@@ -42,6 +42,17 @@ class FeedFeature:
     def info(self) -> FeatureInfo:
         return FeatureInfo(
             key=KEY,
+            names={
+                "en": "Feed advice", "bn": "খাবারের পরামর্শ",
+                "hi": "आहार सलाह", "bho": "दाना सलाह", "mai": "दाना सलाह",
+            },
+            summaries={
+                "en": "How much to feed, by age and flock size.",
+                "bn": "বয়স ও পালের আকার অনুযায়ী কতটা খাওয়াবেন।",
+                "hi": "उम्र और झुंड के आकार से कितना दाना दें।",
+                "bho": "उमिर आ झुंड के हिसाब से केतना दाना दीं।",
+                "mai": "उमेर आ झुंडक हिसाबसँ केतेक दाना दिअ।",
+            },
             name_en="Feed advice",
             name_hi="आहार सलाह",
             summary_en="Enter a bird's age, get the exact ration.",

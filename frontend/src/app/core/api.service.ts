@@ -5,6 +5,9 @@ import { Observable } from 'rxjs';
 /** A feature as the backend describes it. The menu is built from this. */
 export interface FeatureInfo {
   key: string;
+  /** Resolved for the requested language by the server. */
+  name: string;
+  summary: string;
   name_en: string;
   name_hi: string;
   summary_en: string;
@@ -40,8 +43,9 @@ export class ApiService {
   private http = inject(HttpClient);
   private base = location.port === '4200' ? 'http://localhost:8000' : '';
 
-  features(): Observable<{ features: FeatureInfo[] }> {
-    return this.http.get<{ features: FeatureInfo[] }>(`${this.base}/api/features`);
+  features(lang?: string): Observable<{ features: FeatureInfo[] }> {
+    const q = lang ? `?lang=${encodeURIComponent(lang)}` : '';
+    return this.http.get<{ features: FeatureInfo[] }>(`${this.base}/api/features${q}`);
   }
 
   /** Generic feature call, so a new feature needs no new method here. */

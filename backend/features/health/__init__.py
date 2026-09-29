@@ -63,6 +63,18 @@ class HealthFeature:
     def info(self) -> FeatureInfo:
         return FeatureInfo(
             key=KEY,
+            names={
+                "en": "Flock health", "bn": "পালের স্বাস্থ্য",
+                "hi": "झुंड का स्वास्थ्य", "bho": "झुंड के सेहत",
+                "mai": "झुंडक स्वास्थ्य",
+            },
+            summaries={
+                "en": "Report what you see; photo scoring coming soon.",
+                "bn": "যা দেখছেন জানান; ছবি থেকে বিচার শীঘ্রই আসছে।",
+                "hi": "जो दिख रहा है बताएँ; फ़ोटो जाँच जल्द आएगी।",
+                "bho": "जे लउकत बा बताईं; फोटो जाँच जल्दी आई।",
+                "mai": "जे देखाइत अछि कहू; फोटो जाँच शीघ्र आओत।",
+            },
             name_en="Flock health",
             name_hi="झुंड का स्वास्थ्य",
             summary_en="Report what you see; photo scoring coming soon.",

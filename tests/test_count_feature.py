@@ -40,10 +40,18 @@ def _b64(raw: bytes) -> str:
     return base64.b64encode(raw).decode()
 
 
+def _has_devanagari(text: str) -> bool:
+    return any("\u0900" <= ch <= "\u097F" for ch in text)
+
+
+def _has_bengali(text: str) -> bool:
+    return any("\u0980" <= ch <= "\u09FF" for ch in text)
+
+
 def result(clear, total, crowding=0.0, boxes=None):
     return CountResult(
         clear=clear, total=total, boxes=boxes or [], width=640, height=480,
-        crowding=crowding, note_en="", note_hi="",
+        crowding=crowding, note={},
     )
 
 
@@ -127,9 +135,32 @@ def test_photo_endpoint_returns_a_range_not_just_a_number():
     assert set(body["range"]) == {"low", "high"}
 
 
-def test_note_is_bilingual():
+def test_note_comes_back_in_the_requested_language():
+    """The server resolves the language; the client gets one plain string."""
+    bn = client.post("/api/count/photo",
+                     json={"image_base64": _b64(_png()), "lang": "bn"}).json()
+    en = client.post("/api/count/photo",
+                     json={"image_base64": _b64(_png()), "lang": "en"}).json()
+    assert isinstance(bn["note"], str) and bn["note"]
+    assert bn["note"] != en["note"], "bn and en must differ"
+    assert _has_bengali(bn["note"])
+
+
+def test_language_defaults_to_bengali():
     body = client.post("/api/count/photo", json={"image_base64": _b64(_png())}).json()
-    assert body["note"]["en"] and body["note"]["hi"]
+    assert body["lang"] == "bn"
+
+
+def test_unknown_language_falls_back_rather_than_failing():
+    body = client.post("/api/count/photo",
+                       json={"image_base64": _b64(_png()), "lang": "zz"}).json()
+    assert body["lang"] == "bn"
+
+
+def test_bhojpuri_falls_back_to_hindi_when_untranslated():
+    from core.languages import resolve
+
+    assert resolve({"en": "x", "hi": "हिन्दी"}, "bho") == "हिन्दी"
 
 
 def test_blank_image_finds_nothing_and_says_so():
@@ -138,9 +169,12 @@ def test_blank_image_finds_nothing_and_says_so():
     assert body["quality"] == "none"
 
 
-def test_tips_endpoint_is_bilingual():
-    tips = client.get("/api/count/tips").json()["tips"]
-    assert tips["en"] and tips["hi"]
+def test_tips_endpoint_returns_the_requested_language():
+    bn = client.get("/api/count/tips?lang=bn").json()
+    en = client.get("/api/count/tips?lang=en").json()
+    assert bn["tips"] and en["tips"]
+    assert bn["tips"] != en["tips"]
+    assert bn["lang"] == "bn"
 
 
 # --- bad input ----------------------------------------------------------
@@ -200,3 +234,40 @@ def test_tool_is_read_only():
     tool = next(t for t in features.loaded["count"].feature.tools()
                 if t.name == "count_birds_in_photo")
     assert tool.effect is Effect.READ
+
+
+# --- errors must be readable by a farmer who reads no English -----------
+
+def _has_devanagari(text: str) -> bool:
+    return any("ऀ" <= ch <= "ॿ" for ch in text)
+
+
+def test_errors_are_in_the_readers_language():
+    """A farmer who reads only Bengali must understand a failure."""
+    payload = _b64(b"not an image at all" * 5)
+    detail = client.post(
+        "/api/count/photo", json={"image_base64": payload, "lang": "bn"}
+    ).json()["detail"]
+    assert _has_bengali(detail), f"not Bengali: {detail!r}"
+
+
+def test_errors_translate_to_hindi_too():
+    payload = _b64(b"not an image at all" * 5)
+    detail = client.post(
+        "/api/count/photo", json={"image_base64": payload, "lang": "hi"}
+    ).json()["detail"]
+    assert _has_devanagari(detail), f"not Devanagari: {detail!r}"
+
+
+def test_tiny_image_error_is_translated():
+    detail = client.post(
+        "/api/count/photo", json={"image_base64": _b64(_png(16, 16)), "lang": "bn"}
+    ).json()["detail"]
+    assert _has_bengali(detail), f"not Bengali: {detail!r}"
+
+
+def test_undecodable_payload_error_is_translated():
+    detail = client.post(
+        "/api/count/photo", json={"image_base64": "!" * 40, "lang": "bn"}
+    ).json()["detail"]
+    assert _has_bengali(detail), f"not Bengali: {detail!r}"
