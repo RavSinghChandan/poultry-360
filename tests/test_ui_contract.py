@@ -78,3 +78,24 @@ def test_the_app_opens_on_the_count_screen():
 def test_template_literal_is_balanced():
     """A stray backtick inside the template silently breaks the build."""
     assert component().count("`") % 2 == 0
+
+
+# --- reachable from a phone ---------------------------------------------
+
+RUN_SH = ROOT / "run.sh"
+
+
+def test_the_server_binds_to_every_interface():
+    """On 127.0.0.1 the app is invisible to every phone on the Wi-Fi.
+
+    This shipped: run.sh bound to loopback, so the app worked at the desk and
+    was unreachable from the shed, which is where it is actually used.
+    """
+    src = RUN_SH.read_text()
+    assert "--host 127.0.0.1" not in src, "loopback binding blocks all phones"
+    assert "0.0.0.0" in src
+
+
+def test_startup_prints_the_phone_address():
+    """Nobody should have to ask what URL to type on their phone."""
+    assert "On a phone" in RUN_SH.read_text()

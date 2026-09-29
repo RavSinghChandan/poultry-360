@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -68,6 +68,39 @@ def health() -> dict[str, Any]:
 def feature_list(lang: str | None = None) -> dict[str, Any]:
     """What the UI builds its menu from, in the reader's language."""
     return features.manifest(lang)
+
+
+@app.get("/api/whoami", tags=["platform"])
+def whoami(request: Request) -> dict:
+    """Who is asking, and over which address.
+
+    Exists for one reason: when someone says "it does not work on my phone",
+    this answers whether the phone reached the server at all, and on which
+    network. If the phone can load this, the server is fine and the problem
+    is elsewhere; if it cannot, the phone never reached the machine.
+    """
+    client = request.client.host if request.client else "unknown"
+    return {
+        "you_are": client,
+        "you_reached": request.headers.get("host", "?"),
+        "same_subnet": client.rsplit(".", 1)[0] == _lan_ip().rsplit(".", 1)[0],
+        "server_lan_ip": _lan_ip(),
+        "ok": True,
+    }
+
+
+def _lan_ip() -> str:
+    """The address a phone on the same Wi-Fi should use."""
+    import socket
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("8.8.8.8", 80))       # no packet sent; just picks a route
+        return sock.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        sock.close()
 
 
 @app.get("/api/languages", tags=["platform"])
