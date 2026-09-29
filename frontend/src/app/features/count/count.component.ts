@@ -42,22 +42,31 @@ interface CountResponse {
     <div class="card">
       <div class="hint">{{ t()('prompt') }}</div>
 
-      <label class="pick">
-        <input type="file" accept="image/*" capture="environment"
-               (change)="onFile($event, 'photo')" hidden />
-        <span>{{ t()('takePhoto') }}</span>
-      </label>
+      <!-- Inputs are driven programmatically. The capture attribute is
+           deliberately NOT set: with it, iOS opens the camera only and gives
+           no way to pick an existing photo, which is usually what a farmer
+           wants. The accept attribute still offers the camera in the sheet. -->
+      <input #photoInput type="file" accept="image/*"
+             (change)="onFile($event, 'photo')" hidden />
+      <input #videoInput type="file" accept="video/*"
+             (change)="onFile($event, 'video')" hidden />
 
-      <label class="pick video">
-        <input type="file" accept="video/*" capture="environment"
-               (change)="onFile($event, 'video')" hidden />
-        <span>{{ t()('recordVideo') }}</span>
-      </label>
+      <button type="button" class="pick" [disabled]="busy()"
+              (click)="photoInput.click()">
+        {{ t()('takePhoto') }}
+      </button>
+
+      <button type="button" class="pick video" [disabled]="busy()"
+              (click)="videoInput.click()">
+        {{ t()('recordVideo') }}
+      </button>
       <div class="hint tiny">{{ t()('videoFindsMore') }}</div>
 
       <div class="err" *ngIf="error()">{{ error() }}</div>
-      <div class="hint" *ngIf="busy()">
-        {{ mode() === 'video' ? t()('watching') : t()('counting') }}
+
+      <div class="working" *ngIf="busy()">
+        <span class="spinner"></span>
+        <span>{{ mode() === 'video' ? t()('watching') : t()('counting') }}</span>
       </div>
     </div>
 
@@ -118,10 +127,19 @@ interface CountResponse {
     </div>
   `,
   styles: [`
-    .pick{display:block;margin:12px 0}
-    .pick span{display:block;text-align:center;background:var(--accent);color:#fff;
-               padding:16px;border-radius:12px;font-size:18px;font-weight:600}
-    .pick.video span{background:#0f766e}
+    .pick{display:block;width:100%;margin:12px 0;text-align:center;
+          background:var(--accent);color:#fff;border:0;
+          padding:18px;border-radius:12px;font-size:18px;font-weight:600;
+          min-height:56px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .pick:active{transform:scale(.98)}
+    .pick:disabled{opacity:.55}
+    .pick.video{background:#0f766e}
+    .working{display:flex;align-items:center;gap:10px;margin-top:12px;
+             color:var(--muted);font-size:15px}
+    .spinner{width:20px;height:20px;border:3px solid var(--line);
+             border-top-color:var(--accent);border-radius:50%;
+             animation:spin .8s linear infinite;flex:none}
+    @keyframes spin{to{transform:rotate(360deg)}}
     .tiny{font-size:13px;text-align:center;margin-top:-4px}
     .vstats{display:flex;flex-wrap:wrap;gap:12px;color:var(--muted);font-size:14px;
             margin:8px 0}
@@ -188,7 +206,11 @@ export class CountComponent {
   }
 
   onFile(event: Event, mode: 'photo' | 'video'): void {
-    const file = (event.target as HTMLInputElement).files?.[0];
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    // Clear it immediately: without this, choosing the same file twice fires
+    // no change event and the app looks frozen.
+    input.value = '';
     if (!file) return;
 
     this.mode.set(mode);

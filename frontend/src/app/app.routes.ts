@@ -8,7 +8,7 @@ import { Routes } from '@angular/router';
  * /api/features.
  */
 export const routes: Routes = [
-  { path: '', redirectTo: 'feed', pathMatch: 'full' },
+  { path: '', redirectTo: 'count', pathMatch: 'full' },
   {
     path: 'feed',
     loadComponent: () =>
@@ -24,5 +24,5 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/count/count.component').then((m) => m.CountComponent),
   },
-  { path: '**', redirectTo: 'feed' },
+  { path: '**', redirectTo: 'count' },
 ];
