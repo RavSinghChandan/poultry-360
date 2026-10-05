@@ -1,0 +1,21 @@
+# Render blueprint: New > Blueprint > this repo. Free web service, one Docker image.
+services:
+  - type: web
+    name: poultry-360
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: POULTRY_ENV
+        value: production
+      - key: DEEPSEEK_API_KEY      # optional: paste it in Render; never commit it
+        sync: false
+      - key: ADMIN_KEY             # the owner's key for /admin
+        generateValue: true
+      - key: POULTRY_SECRET        # signs tenant keys and sessions
+        generateValue: true
+      - key: POULTRY_DAILY_PER_USER
+        value: "40"
+      - key: POULTRY_DAILY_TOTAL
+        value: "400"

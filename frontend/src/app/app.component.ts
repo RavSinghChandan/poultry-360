@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { AuthService } from './core/auth.service';
 import { ApiService, FeatureInfo } from './core/api.service';
 import { I18nService } from './core/i18n.service';
 
@@ -12,7 +13,7 @@ import { I18nService } from './core/i18n.service';
     <header>
       <div class="wrap">
         <div class="top">
-          <h1>🐔 Poultry 360</h1>
+          <h1><a routerLink="/welcome" class="home">🐔 Poultry 360</a></h1>
           <select class="lang"
                   (change)="pick($any($event.target).value)"
                   [attr.aria-label]="i18n.t()('language')">
@@ -26,7 +27,14 @@ import { I18nService } from './core/i18n.service';
             </option>
           </select>
         </div>
-        <div class="sub">every answer from a cited source</div>
+        <div class="sub">
+          <span>every answer from a cited source</span>
+          <span class="who" *ngIf="auth.session() as s">
+            {{ i18n.t()('farmOf') }} · {{ s.tenantName }}
+            <a href="" (click)="$event.preventDefault(); signOut()">{{ i18n.t()('signOut') }}</a>
+          </span>
+          <a class="who" *ngIf="!auth.session()" routerLink="/login">{{ i18n.t()('signIn') }}</a>
+        </div>
       </div>
     </header>
 
@@ -41,6 +49,10 @@ import { I18nService } from './core/i18n.service';
     <main class="wrap"><router-outlet /></main>
   `,
   styles: [`
+    .home{color:#fff;text-decoration:none}
+    .sub{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .who{font-weight:700;color:#fff}
+    .who a,a.who{color:#fff;margin-left:8px}
     .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
     .lang{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.45);
           border-radius:10px;padding:8px 10px;font-size:16px;font-weight:600;
@@ -59,6 +71,13 @@ export class AppComponent {
   private api = inject(ApiService);
   i18n = inject(I18nService);
   features = signal<FeatureInfo[]>([]);
+  auth = inject(AuthService);
+  private router = inject(Router);
+
+  signOut(): void {
+    this.auth.logout();
+    this.router.navigateByUrl('/welcome');
+  }
 
   pick(code: string): void {
     this.i18n.set(code);

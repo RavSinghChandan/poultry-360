@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ChakraComponent } from '../../shared/chakra.component';
 import { ApiService } from '../../core/api.service';
 
 interface Sign { key: string; en: string; hi: string; suggests_en: string; suggests_hi: string; }
@@ -7,8 +8,9 @@ interface Sign { key: string; en: string; hi: string; suggests_en: string; sugge
 @Component({
   selector: 'app-health',
   standalone: true,
-  imports: [CommonModule],
+  imports: [ChakraComponent, CommonModule],
   template: `
+    <div class="card"><app-chakra flow="health" [compact]="true" [current]="note() ? 2 : picked().size ? 1 : 0" /></div>
     <div class="card">
       <div class="hint">जो दिख रहा है चुनें · Select what you see</div>
       <div class="signs">

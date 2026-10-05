@@ -1,5 +1,6 @@
 import { Component, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ChakraComponent } from '../../shared/chakra.component';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
 import { I18nService } from '../../core/i18n.service';
@@ -37,8 +38,9 @@ interface CountResponse {
 @Component({
   selector: 'app-count',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [ChakraComponent, CommonModule, FormsModule],
   template: `
+    <div class="card"><app-chakra flow="count" [compact]="true" [current]="stage()" /></div>
     <div class="card">
       <div class="hint">{{ t()('prompt') }}</div>
 
@@ -183,6 +185,8 @@ export class CountComponent {
   busy = signal(false);
   saving = signal(false);
   confirmed = 0;
+  /** Where the farmer is on the chakra: pick, counting, check, recorded. */
+  stage = computed(() => this.saved() ? 3 : this.result() ? 2 : this.busy() ? 1 : 0);
 
   /** Displayed image size, so boxes can be scaled from original pixels. */
   private shown = signal<{ w: number; h: number }>({ w: 0, h: 0 });

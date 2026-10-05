@@ -10,8 +10,10 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
+from api.auth_routes import client_ip, router as auth_router
+from core import tenancy
 from core.config import settings
 from core.registry import FeatureRegistry
 from harness import llm
@@ -29,6 +31,23 @@ app.add_middleware(
 
 features = FeatureRegistry()
 features.discover()
+app.include_router(auth_router)
+
+
+@app.middleware("http")
+async def farms_sign_in(request: Request, call_next):
+    """Every feature action (a POST under /api/<feature>/) needs a signed-in farm when sign-in is on.
+
+    Reading tips, schedules and sign lists stays open; the work that spends CPU
+    or the AI key is what needs a tenant key, within the daily caps.
+    """
+    parts = request.url.path.strip("/").split("/")
+    if request.method == "POST" and len(parts) >= 3 and parts[0] == "api" and parts[1] in features.loaded:
+        try:
+            tenancy.authorize(request.headers.get("authorization"), client_ip(request))
+        except tenancy.AuthError as e:
+            return JSONResponse({"detail": e.message}, status_code=e.status)
+    return await call_next(request)
 
 # Every healthy feature's routes, mounted under its own key.
 for key, router in features.routers():

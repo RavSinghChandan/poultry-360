@@ -1,13 +1,15 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ChakraComponent } from '../../shared/chakra.component';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Ration } from '../../core/api.service';
 
 @Component({
   selector: 'app-feed',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [ChakraComponent, CommonModule, FormsModule],
   template: `
+    <div class="card"><app-chakra flow="feed" [compact]="true" [current]="ration() ? 3 : 0" /></div>
     <div class="card">
       <label for="day">मुर्गी की उम्र <span class="hint">(Age in days · 0–42)</span></label>
       <input id="day" type="number" inputmode="numeric" min="0" max="42" [(ngModel)]="day" />

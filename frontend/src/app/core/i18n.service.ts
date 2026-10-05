@@ -1,5 +1,6 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { AUTH_UI } from './strings-auth';
 
 export interface LanguageInfo {
   code: string;
@@ -106,6 +107,8 @@ const UI: Record<string, Record<string, string>> = {
     language: 'Language',
   },
 };
+
+for (const [code, strings] of Object.entries(AUTH_UI)) UI[code] = { ...strings, ...UI[code] };
 
 /** Which language to try when one has no string. Mirrors the backend. */
 const FALLBACK: Record<string, string> = { bho: 'hi', mai: 'hi', bn: 'en', hi: 'en' };
