@@ -213,8 +213,11 @@ def test_tips_endpoint_reports_video_readiness():
 
 
 def test_video_errors_are_bilingual():
-    """A farmer who reads no English must still understand a failure."""
+    """A farmer who reads no English must still understand a failure.
+
+    The app always sends the chosen language, so the error comes back in it.
+    """
     payload = base64.b64encode(b"not a video" * 20).decode()
-    detail = client.post("/api/count/video", json={"video_base64": payload}).json()["detail"]
+    detail = client.post("/api/count/video", json={"video_base64": payload, "lang": "hi"}).json()["detail"]
     assert any("ऀ" <= ch <= "ॿ" for ch in detail), \
         f"error is English-only: {detail!r}"

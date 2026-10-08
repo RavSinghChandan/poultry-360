@@ -1,99 +1,92 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 import { AuthService } from './core/auth.service';
-import { ApiService, FeatureInfo } from './core/api.service';
 import { I18nService } from './core/i18n.service';
+import { SpeechService } from './core/speech.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
   imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive],
   template: `
-    <header>
-      <div class="wrap">
-        <div class="top">
-          <h1><a routerLink="/welcome" class="home">🐔 Poultry 360</a></h1>
-          <select class="lang"
-                  (change)="pick($any($event.target).value)"
-                  [attr.aria-label]="i18n.t()('language')">
-            <!-- [selected] rather than [value] on the select: the options are
-                 rendered by *ngFor, so a value bound before they exist is
-                 dropped and the picker falls back to showing the first entry
-                 even though the app is running in the saved language. -->
-            <option *ngFor="let l of i18n.available()" [value]="l.code"
-                    [selected]="l.code === i18n.lang()">
-              {{ l.native }}
-            </option>
-          </select>
+    <header class="top" data-noread>
+      <div class="wrap bar">
+        <a routerLink="/today" class="brand" aria-label="Poultry 360"><span class="logo">🐔</span><span>Poultry 360</span></a>
+        <div class="acts">
+          <button *ngIf="speech.supported && !bare()" type="button" class="listen" (click)="listen()"
+                  [attr.aria-label]="t()(speech.speaking() ? 'common.stop' : 'common.listen')">
+            <span aria-hidden="true">{{ speech.speaking() ? '⏹' : '🔊' }}</span><span class="lbl">{{ t()(speech.speaking() ? 'common.stop' : 'common.listen') }}</span>
+          </button>
+          <a routerLink="/language" class="lang" [attr.aria-label]="t()('common.language')"><span aria-hidden="true">🌐</span> {{ i18n.current()?.native || 'English' }}</a>
         </div>
-        <div class="sub">
-          <span>every answer from a cited source</span>
-          <span class="who" *ngIf="auth.session() as s">
-            {{ i18n.t()('farmOf') }} · {{ s.tenantName }}
-            <a href="" (click)="$event.preventDefault(); signOut()">{{ i18n.t()('signOut') }}</a>
-          </span>
-          <a class="who" *ngIf="!auth.session()" routerLink="/login">{{ i18n.t()('signIn') }}</a>
-        </div>
+      </div>
+      <div class="wrap farm" *ngIf="auth.session() as s">
+        <span>🏡 {{ s.tenantName }}</span>
+        <a href="" (click)="$event.preventDefault(); signOut()">{{ t()('common.signOut') }}</a>
       </div>
     </header>
 
-    <nav class="wrap" *ngIf="features().length > 1">
-      <a *ngFor="let f of features()" [routerLink]="'/' + f.key"
-         routerLinkActive="on" class="tab" [class.off]="!f.healthy">
-        {{ f.icon }} {{ f.name }}
-        <em *ngIf="f.status !== 'live'">{{ f.status }}</em>
+    <main id="main" class="wrap"><router-outlet /></main>
+
+    <nav class="tabs" *ngIf="!bare()" data-noread [attr.aria-label]="'Poultry 360'">
+      <a *ngFor="let tab of tabs" [routerLink]="tab.path" routerLinkActive="on" class="tab">
+        <span class="ic" aria-hidden="true">{{ tab.icon }}</span><span>{{ t()(tab.label) }}</span>
       </a>
     </nav>
-
-    <main class="wrap"><router-outlet /></main>
   `,
   styles: [`
-    .home{color:#fff;text-decoration:none}
-    .sub{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
-    .who{font-weight:700;color:#fff}
-    .who a,a.who{color:#fff;margin-left:8px}
-    .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .lang{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.45);
-          border-radius:10px;padding:8px 10px;font-size:16px;font-weight:600;
-          min-height:44px}
-    .lang option{color:#111}
-    nav{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-    .tab{flex:1;min-width:140px;text-align:center;padding:12px;border-radius:12px;
-         background:#fff;border:2px solid var(--line);color:var(--ink);
-         text-decoration:none;font-weight:700;font-size:16px}
-    .tab.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
-    .tab.off{opacity:.5}
-    .tab em{display:block;font-size:12px;font-weight:400;color:var(--muted);font-style:normal}
+    .top{position:sticky;top:0;z-index:20;background:rgba(247,244,238,.95);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+    .bar{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:62px}
+    .brand{display:flex;align-items:center;gap:8px;font-weight:900;font-size:20px;text-decoration:none;color:var(--ink);white-space:nowrap}
+    .logo{font-size:26px}
+    .acts{display:flex;gap:8px;align-items:center}
+    .listen{width:auto;margin:0;min-height:46px;padding:0 14px;font-size:16px;border-radius:999px;background:var(--ink);gap:6px}
+    .lang{display:flex;align-items:center;gap:6px;min-height:46px;padding:0 14px;border-radius:999px;border:2px solid var(--line);background:#fff;font-weight:700;font-size:16px;text-decoration:none}
+    @media (max-width:440px){.listen .lbl{display:none}.listen{width:46px;padding:0;justify-content:center;font-size:20px}}
+    .farm{display:flex;justify-content:space-between;gap:10px;padding-bottom:8px;font-size:15px;font-weight:700;color:var(--muted)}
+    .farm a{color:var(--accent)}
+    main{padding-top:6px;padding-bottom:24px}
+    .tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(5,1fr);
+          background:#fff;border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));box-shadow:0 -8px 24px -16px rgba(0,0,0,.25)}
+    .tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;min-height:60px;border-radius:14px;text-decoration:none;color:var(--muted);font-size:13px;font-weight:700;text-align:center}
+    .tab .ic{font-size:26px;line-height:1.1;filter:grayscale(.35)}
+    .tab.on{color:var(--accent);background:var(--accent-soft)}
+    .tab.on .ic{filter:none}
   `],
 })
 export class AppComponent {
-  private api = inject(ApiService);
   i18n = inject(I18nService);
-  features = signal<FeatureInfo[]>([]);
+  speech = inject(SpeechService);
   auth = inject(AuthService);
   private router = inject(Router);
+  t = this.i18n.t;
+  private url = signal(this.router.url);
+  /** The language picker and the owner's page get the whole screen. */
+  bare = computed(() => /^\/(language|admin)/.test(this.url()));
+  readonly tabs = [
+    { path: '/today', icon: '🏠', label: 'nav.today' },
+    { path: '/count', icon: '📷', label: 'nav.count' },
+    { path: '/feed', icon: '🌾', label: 'nav.feed' },
+    { path: '/health', icon: '🩺', label: 'nav.health' },
+    { path: '/diary', icon: '📒', label: 'nav.diary' },
+  ];
+
+  constructor() {
+    this.router.events.pipe(filter((e) => e instanceof NavigationEnd)).subscribe((e) => {
+      this.url.set((e as NavigationEnd).urlAfterRedirects);
+      this.speech.stop();
+    });
+  }
+
+  listen(): void {
+    if (this.speech.speaking()) this.speech.stop();
+    else this.speech.readElement(document.getElementById('main'));
+  }
 
   signOut(): void {
     this.auth.logout();
     this.router.navigateByUrl('/welcome');
-  }
-
-  pick(code: string): void {
-    this.i18n.set(code);
-    this.load();           // menu labels come from the server, so re-fetch
-  }
-
-  private load(): void {
-    this.api.features(this.i18n.lang()).subscribe({
-      next: (r) => this.features.set(r.features),
-      error: () => {},
-    });
-  }
-
-  constructor() {
-    // The menu is data, not markup: a new backend feature appears here with
-    // no change to this component, and its label arrives already translated.
-    this.load();
   }
 }

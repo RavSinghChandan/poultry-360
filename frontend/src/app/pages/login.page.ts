@@ -62,7 +62,7 @@ export class LoginPage implements OnInit {
         await this.auth.login(this.key, this.user);
         this.waking.set(false);
         this.busy.set(false);
-        this.router.navigateByUrl(this.route.snapshot.queryParamMap.get('next') || '/count');
+        this.router.navigateByUrl(this.route.snapshot.queryParamMap.get('next') || '/today');
         return;
       } catch (e) {
         const status = e instanceof HttpErrorResponse ? e.status : 0;

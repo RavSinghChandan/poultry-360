@@ -46,6 +46,24 @@ OBSERVABLE_SIGNS = {
         "suggests_en": "Check feeder access and water first, then consult a vet.",
         "suggests_hi": "पहले दाना-पानी की पहुँच देखें, फिर पशु चिकित्सक से मिलें।",
     },
+    "noisy_breathing": {
+        "en": "Noisy breathing, coughing or sneezing",
+        "hi": "साँस में आवाज़, खाँसी या छींक",
+        "suggests_en": "Can be a respiratory infection. Keep the shed airy and consult a vet.",
+        "suggests_hi": "साँस का संक्रमण हो सकता है। शेड हवादार रखें और पशु डॉक्टर से बात करें।",
+    },
+    "lame": {
+        "en": "Birds not walking well",
+        "hi": "मुर्गियाँ ठीक से चल नहीं पा रहीं",
+        "suggests_en": "Check the litter is dry and the stocking density. If many birds, consult a vet.",
+        "suggests_hi": "देखें कि बिछावन सूखा है और भीड़ ज़्यादा नहीं। कई मुर्गियाँ हों तो पशु डॉक्टर से बात करें।",
+    },
+    "sudden_deaths": {
+        "en": "Many birds dying suddenly",
+        "hi": "अचानक कई मुर्गियाँ मर रही हैं",
+        "suggests_en": "Call a vet today. Remove dead birds and keep one for the vet to examine.",
+        "suggests_hi": "आज ही पशु डॉक्टर बुलाएँ। मरी मुर्गियाँ हटाएँ और जाँच के लिए एक रखें।",
+    },
 }
 
 _VET_NOTE_EN = "This is not a diagnosis. Consult a veterinarian for sick birds."

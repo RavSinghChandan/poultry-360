@@ -146,15 +146,15 @@ def test_note_comes_back_in_the_requested_language():
     assert _has_bengali(bn["note"])
 
 
-def test_language_defaults_to_bengali():
+def test_language_defaults_to_english():
     body = client.post("/api/count/photo", json={"image_base64": _b64(_png())}).json()
-    assert body["lang"] == "bn"
+    assert body["lang"] == "en"
 
 
 def test_unknown_language_falls_back_rather_than_failing():
     body = client.post("/api/count/photo",
                        json={"image_base64": _b64(_png()), "lang": "zz"}).json()
-    assert body["lang"] == "bn"
+    assert body["lang"] == "en"
 
 
 def test_bhojpuri_falls_back_to_hindi_when_untranslated():

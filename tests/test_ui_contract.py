@@ -70,9 +70,9 @@ def test_tap_targets_are_large_enough():
     assert match and int(match.group(1)) >= 48
 
 
-def test_the_app_opens_on_the_count_screen():
+def test_the_app_opens_on_today():
     src = ROUTES.read_text()
-    assert "redirectTo: 'count'" in src, "landing on another feature hides this one"
+    assert "redirectTo: 'today'" in src, "the app opens on Today, which leads to every tool"
 
 
 def test_template_literal_is_balanced():

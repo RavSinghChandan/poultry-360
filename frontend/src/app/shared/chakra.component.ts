@@ -1,7 +1,13 @@
 import { Component, Input, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { I18nService } from '../core/i18n.service';
-import { FLOW_ICONS } from '../core/strings-auth';
+/** One icon per step of each flow; the words come from the language files ("<flow>.<n>" and "<flow>.<n>h"). */
+export const FLOW_ICONS: Record<string, string[]> = {
+  access: ['📝', '✅', '🔑', '🚪'],
+  count: ['📷', '🤖', '👀', '📒'],
+  feed: ['🐣', '🐔', '📊', '🌾'],
+  health: ['☑️', '📖', '🩺'],
+};
 
 /**
  * A flow drawn as a chakra: each step is a node on the wheel, in order,

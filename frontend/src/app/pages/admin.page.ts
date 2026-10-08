@@ -5,6 +5,7 @@ import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http
 import { firstValueFrom } from 'rxjs';
 import { API_BASE } from '../core/auth.service';
 import { FORM_STYLES } from './form.css';
+import { I18nService } from '../core/i18n.service';
 
 interface Reg {
   id: string; farm: string; owner: string; email: string; phone: string; district: string;
@@ -41,6 +42,15 @@ const KEY = 'poultry360.admin';
           <a *ngIf="k.email" class="ghost btnlike" [href]="mailto(k)">Email it</a>
           <button type="button" class="ghost" (click)="issued.set(null)">Done</button>
         </div>
+      </section>
+
+      <section class="card">
+        <label class="f">Language for sign-in links
+          <select [(ngModel)]="linkLang" name="ll" class="sel">
+            <option *ngFor="let l of i18n.available()" [value]="l.code">{{ l.native }} · {{ l.english }}</option>
+          </select>
+        </label>
+        <p class="hint">A farm opening its link sees the app in this language. It can change it any time.</p>
       </section>
 
       <h3>Waiting for approval <span class="pill">{{ pending().length }}</span></h3>
@@ -87,10 +97,13 @@ const KEY = 'poultry360.admin';
     .acts button,.btnlike{width:auto;margin-top:10px;padding:10px 14px;font-size:15px;border-radius:10px}
     .ghost{background:#fff;color:var(--accent);border:2px solid var(--accent)}
     .btnlike{text-decoration:none;font-weight:800;display:inline-block}
+    .sel{width:100%;min-height:52px;font-size:17px;padding:10px;border:2px solid var(--line);border-radius:12px;background:#fff;margin-top:6px}
   `],
 })
 export class AdminPage {
   private http = inject(HttpClient);
+  i18n = inject(I18nService);
+  linkLang = 'en';
   adminKey = read();
   unlocked = signal(false);
   rows = signal<Reg[]>([]);
@@ -142,7 +155,7 @@ export class AdminPage {
   }
 
   /** One-click sign-in: the key sits after #, so it is never sent to a server. */
-  link(k: Reg) { return `${location.origin}/login#k=${encodeURIComponent(k.tenant_key || '')}&u=${encodeURIComponent(k.username || '')}`; }
+  link(k: Reg) { return `${location.origin}/login#k=${encodeURIComponent(k.tenant_key || '')}&u=${encodeURIComponent(k.username || '')}&l=${this.linkLang}`; }
   message(k: Reg) {
     return `Hi ${k.owner}, your farm ${k.farm} is ready on Poultry 360.\n\nOne-click sign-in: ${this.link(k)}\n\nOr sign in at ${location.origin}/login with\nTenant key: ${k.tenant_key}\nUsername: ${k.username}`;
   }

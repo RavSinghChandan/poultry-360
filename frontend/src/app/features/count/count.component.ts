@@ -4,6 +4,7 @@ import { ChakraComponent } from '../../shared/chakra.component';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
 import { I18nService } from '../../core/i18n.service';
+import { FlockService } from '../../core/flock.service';
 
 interface Box { x1: number; y1: number; x2: number; y2: number; confidence: number; }
 
@@ -40,9 +41,11 @@ interface CountResponse {
   standalone: true,
   imports: [ChakraComponent, CommonModule, FormsModule],
   template: `
-    <div class="card"><app-chakra flow="count" [compact]="true" [current]="stage()" /></div>
+    <h1 class="title">📷 {{ t()('count.title') }}</h1>
+    <div class="card" data-noread><app-chakra flow="count" [compact]="true" [current]="stage()" /></div>
+
     <div class="card">
-      <div class="hint">{{ t()('prompt') }}</div>
+      <p class="hint">{{ t()('count.prompt') }}</p>
 
       <!-- Inputs are driven programmatically. The capture attribute is
            deliberately NOT set: with it, iOS opens the camera only and gives
@@ -55,126 +58,104 @@ interface CountResponse {
 
       <button type="button" class="pick" [disabled]="busy()"
               (click)="photoInput.click()">
-        {{ t()('takePhoto') }}
+        <span class="pick-ic" aria-hidden="true">📷</span>{{ t()('count.photo') }}
       </button>
 
       <button type="button" class="pick video" [disabled]="busy()"
               (click)="videoInput.click()">
-        {{ t()('recordVideo') }}
+        <span class="pick-ic" aria-hidden="true">🎥</span>{{ t()('count.video') }}
       </button>
-      <div class="hint tiny">{{ t()('videoFindsMore') }}</div>
+      <div class="hint tiny">{{ t()('count.videoHint') }}</div>
 
-      <div class="err" *ngIf="error()">{{ error() }}</div>
+      <div class="err" *ngIf="error()" role="alert">{{ error() }}</div>
 
-      <div class="working" *ngIf="busy()">
+      <div class="working" *ngIf="busy()" role="status">
         <span class="spinner"></span>
-        <span>{{ mode() === 'video' ? t()('watching') : t()('counting') }}</span>
+        <span>{{ mode() === 'video' ? t()('count.watching') : t()('count.counting') }}</span>
       </div>
     </div>
 
     <div class="card" *ngIf="mode() === 'photo' && preview() as src">
       <div class="frame">
-        <img [src]="src" (load)="onImageLoad($event)" alt="flock" />
+        <img [src]="src" (load)="onImageLoad($event)" alt="" />
         <div class="box" *ngFor="let b of scaledBoxes()"
              [class.sure]="b.confidence >= 0.45"
              [style.left.px]="b.x1" [style.top.px]="b.y1"
              [style.width.px]="b.x2 - b.x1" [style.height.px]="b.y2 - b.y1"></div>
       </div>
-      <div class="hint legend" *ngIf="result()">
-        <span class="k sure"></span> {{ t()('clear') }}
-        <span class="k"></span> {{ t()('uncertain') }}
+      <div class="hint legend" *ngIf="result()" data-noread>
+        <span class="k sure"></span> {{ t()('count.sure') }}
+        <span class="k"></span> {{ t()('count.unsure') }}
       </div>
     </div>
 
     <div class="card" *ngIf="result() as r">
-      <div class="big">
-        <span class="n">{{ r.counted }}</span>
-        <span class="unit">{{ t()('birdsFound') }}</span>
+      <div class="hero">
+        <span class="big">{{ r.counted }}</span>
+        <span class="unit">{{ t()('count.found') }}</span>
       </div>
 
       <div class="qual" [class]="r.quality">
-        <b>{{ r.quality_label }}</b>
-        <span *ngIf="r.range.low !== r.range.high">
-          ({{ r.range.low }}–{{ r.range.high }})
-        </span>
+        <b>{{ t()('count.q.' + r.quality) }}</b>
+        <span *ngIf="r.range.low !== r.range.high"> ({{ r.range.low }}–{{ r.range.high }})</span>
       </div>
 
       <div class="vstats" *ngIf="r.frames_sampled">
-        <span>{{ r.frames_sampled }} {{ t()('framesChecked') }}</span>
-        <span *ngIf="r.peak_frame_count as p">{{ t()('bestFrame') }} {{ p }}</span>
+        <span>{{ t()('count.frames', { n: r.frames_sampled }) }}</span>
+        <span *ngIf="r.peak_frame_count as p">{{ t()('count.best', { n: p }) }}</span>
       </div>
-
-      <p class="note">{{ r.note }}</p>
 
       <div class="confirm">
-        <div class="hint">{{ t()('enterCorrect') }}</div>
-        <div class="row">
-          <button (click)="bump(-1)" aria-label="less">−</button>
-          <input type="number" min="0" [(ngModel)]="confirmed" />
-          <button (click)="bump(1)" aria-label="more">+</button>
+        <label for="confirmed">✍️ {{ t()('count.check') }}</label>
+        <div class="stepper">
+          <button type="button" (click)="bump(-1)" aria-label="−1">−</button>
+          <input id="confirmed" type="number" inputmode="numeric" min="0" [(ngModel)]="confirmed" />
+          <button type="button" (click)="bump(1)" aria-label="+1">+</button>
         </div>
-        <button class="save" (click)="save()" [disabled]="saving()">
-          {{ t()('recordNumber') }}
-        </button>
+        <button type="button" (click)="save()" [disabled]="saving()">✔ {{ t()('count.save') }}</button>
       </div>
 
-      <ul class="tips" *ngIf="r.tips as tipList">
-        <li *ngFor="let tip of tipList">{{ tip }}</li>
-      </ul>
+      <details *ngIf="r.quality !== 'high'">
+        <summary>💡 {{ t()('count.tipsTitle') }}</summary>
+        <ul class="tips"><li *ngFor="let i of [1, 2, 3, 4, 5]">{{ t()('count.tip.' + i) }}</li></ul>
+      </details>
     </div>
 
-    <div class="card ok" *ngIf="saved() as s">
-      <b>{{ s.message }}</b>
-      <div class="hint" *ngIf="s.difference !== 0">{{ s.model_note }}</div>
-    </div>
+    <div class="ok-box" *ngIf="saved()" role="status">✅ {{ t()('count.saved', { n: confirmed }) }}</div>
   `,
   styles: [`
-    .pick{display:block;width:100%;margin:12px 0;text-align:center;
-          background:var(--accent);color:#fff;border:0;
-          padding:18px;border-radius:12px;font-size:18px;font-weight:600;
-          min-height:56px;cursor:pointer;-webkit-tap-highlight-color:transparent}
-    .pick:active{transform:scale(.98)}
-    .pick:disabled{opacity:.55}
-    .pick.video{background:#0f766e}
-    .working{display:flex;align-items:center;gap:10px;margin-top:12px;
-             color:var(--muted);font-size:15px}
-    .spinner{width:20px;height:20px;border:3px solid var(--line);
-             border-top-color:var(--accent);border-radius:50%;
-             animation:spin .8s linear infinite;flex:none}
+    .title{margin-top:14px}
+    .pick{display:flex;width:100%;margin:12px 0 0;min-height:64px;font-size:19px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .pick-ic{font-size:26px}
+    .pick.video{background:#0F766E}
+    .working{display:flex;align-items:center;gap:10px;margin-top:14px;color:var(--muted);font-size:16px}
+    .spinner{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;flex:none}
     @keyframes spin{to{transform:rotate(360deg)}}
-    .tiny{font-size:13px;text-align:center;margin-top:-4px}
-    .vstats{display:flex;flex-wrap:wrap;gap:12px;color:var(--muted);font-size:14px;
-            margin:8px 0}
+    .tiny{font-size:14px;text-align:center;margin-top:8px}
+    .vstats{display:flex;flex-wrap:wrap;gap:12px;color:var(--muted);font-size:15px;margin:8px 0}
     .frame{position:relative;display:inline-block;max-width:100%}
-    .frame img{max-width:100%;display:block;border-radius:10px}
+    .frame img{max-width:100%;display:block;border-radius:12px}
     .box{position:absolute;border:2px solid #f0a020;border-radius:3px;pointer-events:none}
     .box.sure{border-color:#16a34a;border-width:3px}
     .legend{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
     .k{display:inline-block;width:14px;height:14px;border:2px solid #f0a020;border-radius:3px}
     .k.sure{border-color:#16a34a}
-    .big{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
-    .big .n{font-size:52px;font-weight:700;line-height:1}
-    .big .unit{color:var(--muted)}
-    .qual{display:inline-block;padding:6px 10px;border-radius:8px;font-size:14px;margin-bottom:8px}
-    .qual.high{background:#dcfce7;color:#14532d}
-    .qual.medium{background:#fef3c7;color:#713f12}
-    .qual.low,.qual.none{background:#fee2e2;color:#7f1d1d}
-    .note{margin:10px 0}
+    .hero{display:flex;align-items:baseline;justify-content:center;gap:10px;margin-bottom:8px}
+    .hero .big{font-size:64px}
+    .hero .unit{color:var(--muted);font-size:20px;font-weight:700}
+    .qual{display:block;text-align:center;padding:8px 12px;border-radius:12px;font-size:16px;margin-bottom:8px}
+    .qual.high{background:var(--ok-soft);color:#14532d}
+    .qual.medium{background:var(--warn-soft);color:#713f12}
+    .qual.low,.qual.none{background:var(--bad-soft);color:#7f1d1d}
     .confirm{margin-top:14px;padding-top:14px;border-top:2px solid var(--line)}
-    .row{display:flex;gap:10px;align-items:center;margin:10px 0}
-    .row button{width:56px;height:56px;font-size:26px;border-radius:12px;
-                border:2px solid var(--line);background:#fff;color:var(--ink)}
-    .row input{flex:1;font-size:30px;text-align:center;padding:10px;
-               border:2px solid var(--line);border-radius:12px;min-width:0}
-    .save{width:100%;padding:16px;font-size:18px}
-    .tips{margin:12px 0 0;padding-left:20px;color:var(--muted);font-size:14px}
-    .err{background:#fee2e2;color:#7f1d1d;padding:12px;border-radius:10px;margin-top:10px}
-    .ok{border-color:#16a34a}
+    .tips{margin:8px 0 0;padding-left:22px;color:var(--muted);font-size:16px}
+    .tips li{margin-bottom:6px}
   `],
 })
 export class CountComponent {
   private api = inject(ApiService);
   private i18n = inject(I18nService);
+  private flock = inject(FlockService);
   t = this.i18n.t;
 
   preview = signal<string | null>(null);
@@ -230,7 +211,7 @@ export class CountComponent {
       this.send(dataUrl, mode);
     };
     reader.onerror = () =>
-      this.error.set(this.t()('readFail'));
+      this.error.set(this.t()('count.readFail'));
     reader.readAsDataURL(file);
   }
 
@@ -249,7 +230,7 @@ export class CountComponent {
           this.busy.set(false);
         },
         error: (e) => {
-          this.error.set(e?.error?.detail ?? this.t()('countFail'));
+          this.error.set(e?.status === 401 ? this.t()('common.netFail') : (e?.error?.detail ?? this.t()('count.fail')));
           this.busy.set(false);
         },
       });
@@ -268,9 +249,9 @@ export class CountComponent {
       confirmed: this.confirmed,
       lang: this.i18n.lang(),
     }).subscribe({
-      next: (s) => { this.saved.set(s); this.saving.set(false); },
+      next: (s) => { this.saved.set(s); this.saving.set(false); this.flock.recordCount(this.confirmed); },
       error: () => {
-        this.error.set(this.t()('saveFail'));
+        this.error.set(this.t()('count.saveFail'));
         this.saving.set(false);
       },
     });

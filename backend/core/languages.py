@@ -32,16 +32,26 @@ class Language:
     fallback: str | None    # tried when this language has no string
 
 
-# Ordered as shown in the language picker. Bengali first: it is the default.
+# Ordered as shown in the language picker. English first: it is the default,
+# and every other language falls back to it. Marathi, Bhojpuri and Maithili
+# readers can very likely read Hindi, so they try Hindi first.
 LANGUAGES: dict[str, Language] = {
-    "bn": Language("bn", "বাংলা", "Bengali", "en"),
+    "en": Language("en", "English", "English", None),
     "hi": Language("hi", "हिन्दी", "Hindi", "en"),
+    "bn": Language("bn", "বাংলা", "Bengali", "en"),
+    "ta": Language("ta", "தமிழ்", "Tamil", "en"),
+    "te": Language("te", "తెలుగు", "Telugu", "en"),
+    "mr": Language("mr", "मराठी", "Marathi", "hi"),
+    "gu": Language("gu", "ગુજરાતી", "Gujarati", "en"),
+    "kn": Language("kn", "ಕನ್ನಡ", "Kannada", "en"),
+    "ml": Language("ml", "മലയാളം", "Malayalam", "en"),
+    "pa": Language("pa", "ਪੰਜਾਬੀ", "Punjabi", "en"),
+    "or": Language("or", "ଓଡ଼ିଆ", "Odia", "en"),
     "bho": Language("bho", "भोजपुरी", "Bhojpuri", "hi"),
     "mai": Language("mai", "मैथिली", "Maithili", "hi"),
-    "en": Language("en", "English", "English", None),
 }
 
-DEFAULT_LANGUAGE = "bn"
+DEFAULT_LANGUAGE = "en"
 FALLBACK_LANGUAGE = "en"
 
 # A Text maps language code -> string. Not every code need be present.

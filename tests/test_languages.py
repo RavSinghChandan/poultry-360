@@ -22,12 +22,13 @@ client = TestClient(app)
 
 # --- the catalogue ------------------------------------------------------
 
-def test_bengali_is_the_default():
-    assert DEFAULT_LANGUAGE == "bn"
+def test_english_is_the_default():
+    """English first; every Indian language is one tap away on the picker."""
+    assert DEFAULT_LANGUAGE == "en"
 
 
 def test_the_promised_languages_are_present():
-    for code in ("bn", "hi", "bho", "mai", "en"):
+    for code in ("en", "hi", "bn", "ta", "te", "mr", "gu", "kn", "ml", "pa", "or", "bho", "mai"):
         assert code in LANGUAGES
 
 
@@ -103,7 +104,7 @@ def test_missing_languages_reports_gaps():
 def test_languages_endpoint_lists_them_all():
     body = client.get("/api/languages").json()
     assert {entry["code"] for entry in body["languages"]} >= {"bn", "hi", "bho", "mai", "en"}
-    assert body["default"] == "bn"
+    assert body["default"] == "en"
 
 
 def test_feature_menu_is_translated():
@@ -115,8 +116,8 @@ def test_feature_menu_is_translated():
         assert by_key_bn[key] != by_key_en[key], f"{key} not translated"
 
 
-def test_feature_menu_defaults_to_bengali():
-    assert client.get("/api/features").json()["lang"] == "bn"
+def test_feature_menu_defaults_to_english():
+    assert client.get("/api/features").json()["lang"] == "en"
 
 
 def test_every_feature_has_a_name_in_every_language():
