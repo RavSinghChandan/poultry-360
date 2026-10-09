@@ -16,9 +16,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from typing import Any
+
+from harness import metrics
 
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-chat"
@@ -26,6 +29,17 @@ TIMEOUT_SECONDS = 20
 
 # A percentage or kcal figure in the reply, which is what must be verified.
 _NUMBER = re.compile(r"(\d+(?:\.\d+)?)\s*(%|percent|kcal|प्रतिशत)", re.IGNORECASE)
+# A figure written after the nutrient instead of before a unit: "protein around 21".
+_AFTER_NUTRIENT = re.compile(
+    r"(?:protein|energy|calcium|lysine|methionine|phosphorus|प्रोटीन|ऊर्जा|कैल्शियम)"
+    r"\D{0,20}?(\d+(?:\.\d+)?)(?![\d.])(?!\s*(?:%|percent|kcal|प्रतिशत))",
+    re.IGNORECASE,
+)
+# A figure spelled out: "five percent".
+_WORD_PERCENT = re.compile(
+    r"\b(one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty)\s+(?:percent|per cent)",
+    re.IGNORECASE,
+)
 
 
 def is_enabled() -> bool:
@@ -48,8 +62,9 @@ def verify_no_invented_numbers(reply: str, allowed: set[str]) -> tuple[str, list
     We do not silently rewrite the text - the caller decides what to do, and
     the API reports the discrepancy so it is never invisible.
     """
-    invented = []
-    for raw, _unit in _NUMBER.findall(reply):
+    invented = list(_WORD_PERCENT.findall(reply))
+    figures = [raw for raw, _unit in _NUMBER.findall(reply)] + _AFTER_NUTRIENT.findall(reply)
+    for raw in figures:
         # Compare numerically so "20" and "20.0" are the same figure.
         try:
             val = float(raw)
@@ -88,11 +103,15 @@ def ask(system: str, user: str, temperature: float = 0.3) -> str | None:
                  "Authorization": f"Bearer {key}"},
         method="POST",
     )
+    started = time.perf_counter()
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             body = json.loads(response.read().decode("utf-8"))
-        return str(body["choices"][0]["message"]["content"]).strip()
+        reply = str(body["choices"][0]["message"]["content"]).strip()
+        metrics.record_model_call(True, (time.perf_counter() - started) * 1000, body.get("usage"))
+        return reply
     except (urllib.error.URLError, TimeoutError, KeyError,
             IndexError, ValueError, json.JSONDecodeError):
         # Deliberately opaque: the request carries the key in its headers.
+        metrics.record_model_call(False, (time.perf_counter() - started) * 1000)
         return None

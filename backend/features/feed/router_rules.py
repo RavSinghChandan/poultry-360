@@ -44,11 +44,17 @@ _TROUBLE = (
     "weak", "dying", "died", "death", "mortality", "sick", "ill", "loose",
     "not eating", "not growing", "not gaining", "slow growth", "thin",
     "weight drop", "problem", "issue", "worried",
+    "stopped eating", "not eat", "low weight",
     "कमज़ोर", "कमजोर", "मर", "बीमार", "नहीं खा", "नहीं बढ़",
+    # Hinglish: Hindi typed in English letters, which is how most farmers text.
+    "kamzor", "kamjor", "mar rahe", "mar rahi", "mar gaye", "mar gayi", "bimar",
+    "beemar", "nahi kha", "nahin kha", "nhi kha", "badh nahi", "badh nahin",
+    "badh nhi", "weight kam", "wajan kam", "vajan kam", "dast", "patli beet",
 )
 
 # Words that ask for reasoning rather than a value.
-_WHY = ("why", "how come", "reason", "explain", "क्यों", "कैसे", "वजह")
+_WHY = ("why", "how come", "reason", "explain", "क्यों", "कैसे", "वजह",
+        "kyun", "kyon", "kyu ", "kaise", "wajah", "vajah")
 
 
 def extract_day(text: str) -> int | None:

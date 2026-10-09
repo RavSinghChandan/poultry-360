@@ -1,0 +1,16 @@
+{"day": 17, "reply": "At day {day} the feed should have {crude_protein_pct}% protein and {energy_kcal_per_kg} kcal energy.", "invented": false}
+{"day": 5, "reply": "Your chicks need {crude_protein_pct}% crude protein now; check the feeder height.", "invented": false}
+{"day": 30, "reply": "Energy should be {energy_kcal_per_kg} kcal per kg at this age.", "invented": false}
+{"day": 20, "reply": "दिन {day} पर प्रोटीन {crude_protein_pct}% होना चाहिए।", "invented": false}
+{"day": 12, "reply": "Keep the protein at {crude_protein_pct} percent and give clean water.", "invented": false}
+{"day": 9, "reply": "Make sure calcium is {calcium_pct}% and lysine {lysine_pct}%.", "invented": false}
+{"day": 28, "reply": "Birds are below target. The feed is fine; check water and temperature.", "invented": false}
+{"day": 14, "reply": "Raise protein to 26% for faster growth.", "invented": true}
+{"day": 22, "reply": "Energy should be about 3400 kcal at this stage.", "invented": true}
+{"day": 6, "reply": "Give feed with 24.5% protein.", "invented": true}
+{"day": 18, "reply": "प्रोटीन 25 प्रतिशत करें।", "invented": true}
+{"day": 33, "reply": "Use a finisher with 17 percent protein and 3300 kcal energy.", "invented": true}
+{"day": 11, "reply": "The ration is {crude_protein_pct}% protein but you should add 2% extra lysine.", "invented": true}
+{"day": 25, "reply": "Calcium should be 1.4% to avoid leg problems.", "invented": true}
+{"day": 40, "reply": "Protein around 21 is enough now.", "invented": true}
+{"day": 8, "reply": "Increase protein by five percent this week.", "invented": true}

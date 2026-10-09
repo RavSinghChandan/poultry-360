@@ -1,0 +1,40 @@
+{"q": "How much protein does a day 17 broiler need?", "route": "factual", "day": 17}
+{"q": "Feed per bird on day 5?", "route": "factual", "day": 5}
+{"q": "What energy kcal for 30 days old chicks", "route": "factual", "day": 30}
+{"q": "day 1 feed chart", "route": "factual", "day": 1}
+{"q": "Ration for 42 days", "route": "factual", "day": 42}
+{"q": "दिन 10 पर कितना दाना दें?", "route": "factual", "day": 10}
+{"q": "21 दिन की मुर्गी को कितना प्रोटीन चाहिए", "route": "factual", "day": 21}
+{"q": "15 din ke chuze ko kitna dana dena hai", "route": "factual", "day": 15}
+{"q": "din 25 ka feed kitna", "route": "factual", "day": 25}
+{"q": "35 din par protein kitna hona chahiye", "route": "factual", "day": 35}
+{"q": "Why do broilers need more protein when they are young?", "route": "explanatory", "day": null}
+{"q": "Explain why starter feed is different from finisher feed", "route": "explanatory", "day": null}
+{"q": "How come energy goes up in the finisher phase?", "route": "explanatory", "day": null}
+{"q": "What is the reason for adding lysine?", "route": "explanatory", "day": null}
+{"q": "प्रोटीन क्यों ज़रूरी है?", "route": "explanatory", "day": null}
+{"q": "फ़ीड बदलने की वजह क्या है", "route": "explanatory", "day": null}
+{"q": "starter feed kyun dete hain", "route": "explanatory", "day": null}
+{"q": "finisher feed kaise alag hai", "route": "explanatory", "day": null}
+{"q": "My day 20 birds are weak, what is wrong?", "route": "diagnostic", "day": 20}
+{"q": "Birds at day 12 are not eating", "route": "diagnostic", "day": 12}
+{"q": "day 28 chicks not gaining weight", "route": "diagnostic", "day": 28}
+{"q": "Mortality is high at 9 days, why?", "route": "diagnostic", "day": 9}
+{"q": "My 30 day birds look thin, is the feed a problem?", "route": "diagnostic", "day": 30}
+{"q": "Birds are dying at day 6", "route": "diagnostic", "day": 6}
+{"q": "दिन 14 पर मुर्गियाँ कमज़ोर हैं", "route": "diagnostic", "day": 14}
+{"q": "18 दिन की मुर्गियाँ नहीं खा रहीं", "route": "diagnostic", "day": 18}
+{"q": "22 दिन पर मुर्गी बीमार है", "route": "diagnostic", "day": 22}
+{"q": "meri 20 din ki murgi kamzor hai", "route": "diagnostic", "day": 20}
+{"q": "16 din ke chuze mar rahe hain", "route": "diagnostic", "day": 16}
+{"q": "murgi dana nahi kha rahi 11 din", "route": "diagnostic", "day": 11}
+{"q": "chuze bimar hain day 8", "route": "diagnostic", "day": 8}
+{"q": "25 din ki murgiyan badh nahi rahi", "route": "diagnostic", "day": 25}
+{"q": "weight kam hai 33 din pe", "route": "diagnostic", "day": 33}
+{"q": "Why are my day 19 birds weak?", "route": "diagnostic", "day": 19}
+{"q": "Birds 24 days old have loose droppings", "route": "diagnostic", "day": 24}
+{"q": "My birds stopped eating since day 13", "route": "diagnostic", "day": 13}
+{"q": "Is 2.5 kg target weight right for day 40?", "route": "factual", "day": 40}
+{"q": "Calcium for day 7 birds", "route": "factual", "day": 7}
+{"q": "7 दिन के चूज़ों को कैल्शियम कितना", "route": "factual", "day": 7}
+{"q": "How much feed for 1000 birds at day 21", "route": "factual", "day": 21}

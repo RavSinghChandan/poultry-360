@@ -11,6 +11,12 @@ interface Reg {
   id: string; farm: string; owner: string; email: string; phone: string; district: string;
   status: 'pending' | 'approved' | 'rejected' | 'revoked'; tenant: string | null; username: string | null; tenant_key: string | null;
 }
+interface Ops {
+  uptime_s: number; requests: number; server_error_rate: number;
+  routes: { route: string; count: number; client_errors: number; server_errors: number; p50_ms: number | null; p95_ms: number | null }[];
+  farms_today: Record<string, number>;
+  model: { calls: number; failed: number; fallback_rate: number; p50_ms: number | null; p95_ms: number | null; prompt_tokens: number; completion_tokens: number };
+}
 const KEY = 'poultry360.admin';
 
 /** The owner's page: approve farms and send them their tenant key + username. */
@@ -42,6 +48,25 @@ const KEY = 'poultry360.admin';
           <a *ngIf="k.email" class="ghost btnlike" [href]="mailto(k)">Email it</a>
           <button type="button" class="ghost" (click)="issued.set(null)">Done</button>
         </div>
+      </section>
+
+      <section class="card ops" *ngIf="ops() as o">
+        <div class="opshead"><b>Service health</b><button type="button" class="ghost mini" (click)="loadOps()">Refresh</button></div>
+        <div class="tiles">
+          <div><span>{{ o.requests }}</span>API calls</div>
+          <div [class.bad]="o.server_error_rate > 0.01"><span>{{ (o.server_error_rate * 100) | number:'1.0-1' }}%</span>server errors</div>
+          <div><span>{{ o.model.calls }}</span>AI calls</div>
+          <div [class.bad]="o.model.fallback_rate > 0.1"><span>{{ (o.model.fallback_rate * 100) | number:'1.0-0' }}%</span>AI fell back</div>
+          <div><span>{{ o.model.p95_ms ?? '–' }}</span>AI p95 ms</div>
+          <div><span>{{ o.model.prompt_tokens + o.model.completion_tokens }}</span>tokens</div>
+        </div>
+        <p class="hint">Since the server started {{ uptime(o.uptime_s) }} ago.</p>
+        <table *ngIf="o.routes.length">
+          <tr><th>Route</th><th>Calls</th><th>Errors</th><th>p50</th><th>p95</th></tr>
+          <tr *ngFor="let r of o.routes.slice(0, 8)"><td class="mono">{{ r.route }}</td><td>{{ r.count }}</td>
+            <td>{{ r.server_errors }}</td><td>{{ r.p50_ms ?? '–' }}</td><td>{{ r.p95_ms ?? '–' }}</td></tr>
+        </table>
+        <p class="hint" *ngIf="farmsToday(o).length">Farms active today: <span *ngFor="let f of farmsToday(o); let last = last">{{ f[0] }} ({{ f[1] }}){{ last ? '' : ', ' }}</span></p>
       </section>
 
       <section class="card">
@@ -97,6 +122,14 @@ const KEY = 'poultry360.admin';
     .acts button,.btnlike{width:auto;margin-top:10px;padding:10px 14px;font-size:15px;border-radius:10px}
     .ghost{background:#fff;color:var(--accent);border:2px solid var(--accent)}
     .btnlike{text-decoration:none;font-weight:800;display:inline-block}
+    .opshead{display:flex;justify-content:space-between;align-items:center}
+    .mini{width:auto!important;margin:0!important;padding:6px 12px!important;font-size:14px!important}
+    .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0 4px}
+    .tiles div{background:var(--bg,#f6f7f4);border-radius:10px;padding:10px 8px;font-size:13px;color:var(--muted);text-align:center}
+    .tiles span{display:block;font-size:20px;font-weight:800;color:inherit}
+    .tiles div:not(.bad) span{color:#1c1c1c} .tiles .bad span{color:#b42318}
+    table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+    th,td{text-align:left;padding:5px 4px;border-bottom:1px solid var(--line)} td.mono{word-break:break-all}
     .sel{width:100%;min-height:52px;font-size:17px;padding:10px;border:2px solid var(--line);border-radius:12px;background:#fff;margin-top:6px}
   `],
 })
@@ -107,6 +140,7 @@ export class AdminPage {
   adminKey = read();
   unlocked = signal(false);
   rows = signal<Reg[]>([]);
+  ops = signal<Ops | null>(null);
   busy = signal(false);
   error = signal('');
   issued = signal<Reg | null>(null);
@@ -125,12 +159,20 @@ export class AdminPage {
     try {
       this.rows.set(await firstValueFrom(this.http.get<Reg[]>(`${API_BASE}/api/admin/registrations`, { headers: this.headers() })));
       this.unlocked.set(true);
+      this.loadOps();
       try { sessionStorage.setItem(KEY, this.adminKey.trim()); } catch { /* private mode */ }
     } catch (e) {
       this.unlocked.set(false);
       this.error.set(e instanceof HttpErrorResponse && e.status === 401 ? 'That admin key is not right.' : 'Could not reach the server. It may be waking up, try again.');
     }
   }
+
+  async loadOps(): Promise<void> {
+    try { this.ops.set(await firstValueFrom(this.http.get<Ops>(`${API_BASE}/api/admin/ops`, { headers: this.headers() }))); }
+    catch { /* the panel is optional; approvals still work */ }
+  }
+  farmsToday(o: Ops) { return Object.entries(o.farms_today); }
+  uptime(s: number) { return s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : `${Math.round(s / 3600)} h`; }
 
   approve(r: Reg) { return this.act(`/api/admin/registrations/${r.id}/approve`, { username: (this.usernames[r.id] || '').trim() }); }
   reject(r: Reg) { return this.act(`/api/admin/registrations/${r.id}/reject`, {}, false); }

@@ -21,6 +21,9 @@ jobs:
         # Includes the platform contract tests, which fail if a new feature
         # breaks isolation from an existing one.
         run: python -m pytest tests/ -q
+      - name: Evals
+        # Router and grounding-guard evals; fails if a score drops below its floor.
+        run: python -m evals.run --check
 
   frontend:
     runs-on: ubuntu-latest

@@ -5,14 +5,17 @@ Nothing outside this package imports it, and it imports no other feature.
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 from pydantic import BaseModel, Field
 
 from core.contracts import FeatureInfo, ToolSpec
 from harness.policy import Effect
+from harness.tools import ToolError
 
 from . import logic, rations
 from .hybrid import answer as hybrid_answer
@@ -80,6 +83,24 @@ class FeedFeature:
                     req.day_from, req.day_to, req.birds)}
             except Exception as exc:
                 return {"ok": False, "error": str(exc)}
+
+        @api.get("/plan.csv")
+        def plan_csv(day_from: int = 1, day_to: int = 42, birds: int = 1000) -> Response:
+            """The day-by-day feed plan as CSV, for a feed-mill order or a farm's own spreadsheet."""
+            try:
+                logic.feed_plan(day_from, day_to, birds)          # same validation as /plan
+            except ToolError as exc:
+                return Response(str(exc), status_code=422, media_type="text/plain")
+            out = io.StringIO()
+            w = csv.writer(out)
+            w.writerow(["day", "phase", "feed_per_bird_g", "flock_feed_kg", "crude_protein_pct",
+                        "energy_kcal_per_kg", "target_weight_g", "dataset_version"])
+            for d in range(day_from, day_to + 1):
+                r = logic.ration_for_day(d, birds)
+                w.writerow([d, r["phase_name_en"], r["feed_per_bird_g"], r["feed_total_kg"], r["crude_protein_pct"],
+                            r["energy_kcal_per_kg"], r["target_weight_g"], rations.DATASET_VERSION])
+            return Response(out.getvalue(), media_type="text/csv", headers={
+                "Content-Disposition": f'attachment; filename="feed-plan-day{day_from}-{day_to}-{birds}-birds.csv"'})
 
         @api.get("/schedule")
         def schedule() -> dict[str, Any]:

@@ -5,6 +5,7 @@ exposes platform-level endpoints. Adding a feature does not change this file.
 """
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,7 @@ from api.auth_routes import client_ip, router as auth_router
 from core import tenancy
 from core.config import settings
 from core.registry import FeatureRegistry
-from harness import llm
+from harness import llm, metrics
 from harness.policy import Mode, Policy
 from harness.tools import Tool, ToolRegistry
 from harness.tracing import Tracer
@@ -48,6 +49,24 @@ async def farms_sign_in(request: Request, call_next):
         except tenancy.AuthError as e:
             return JSONResponse({"detail": e.message}, status_code=e.status)
     return await call_next(request)
+
+# Registered last, so it is outermost and also times the sign-in refusals.
+@app.middleware("http")
+async def measure(request: Request, call_next):
+    """Latency, status and farm for every API call, for the owner's ops panel."""
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+    started = time.perf_counter()
+    response = await call_next(request)
+    # Group by template, so /admin/registrations/<id>/approve is one row, not one per farm.
+    route = request.url.path
+    for name, value in (request.scope.get("path_params") or {}).items():
+        route = route.replace(f"/{value}", f"/{{{name}}}", 1)
+    token = tenancy.read_token((request.headers.get("authorization") or "").removeprefix("Bearer ").strip())
+    metrics.record_request(f"{request.method} {route}", response.status_code,
+                           (time.perf_counter() - started) * 1000, token["t"] if token else None)
+    return response
+
 
 # Every healthy feature's routes, mounted under its own key.
 for key, router in features.routers():

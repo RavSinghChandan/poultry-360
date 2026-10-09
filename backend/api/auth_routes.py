@@ -5,6 +5,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from core import tenancy
+from harness import metrics
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -63,6 +64,13 @@ def login(body: LoginIn, request: Request) -> dict:
 
 def _admin(key: str | None) -> None:
     _call(tenancy.check_admin, key)
+
+
+@router.get("/admin/ops")
+def ops(x_admin_key: str | None = Header(default=None)) -> dict:
+    """Live service health for the owner: traffic, errors, latency, model calls, farms today."""
+    _admin(x_admin_key)
+    return metrics.snapshot()
 
 
 @router.get("/admin/registrations")
