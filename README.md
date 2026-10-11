@@ -1,6 +1,6 @@
 # 🐔 Poultry 360
 
-**Live:** https://poultry-360.onrender.com · [![CI](https://github.com/RavSinghChandan/poultry-360/actions/workflows/ci.yml/badge.svg)](https://github.com/RavSinghChandan/poultry-360/actions/workflows/ci.yml)
+**Live:** https://poultry-360.vercel.app · [![CI](https://github.com/RavSinghChandan/poultry-360/actions/workflows/ci.yml/badge.svg)](https://github.com/RavSinghChandan/poultry-360/actions/workflows/ci.yml)
 
 An AI assistant for small Indian poultry farms. It counts birds from a photo or
 video, says exactly how much to feed by age, and flags health signs that need a
