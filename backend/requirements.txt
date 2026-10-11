@@ -3,6 +3,8 @@ uvicorn[standard]>=0.29.0
 pydantic>=2.7.1
 pytest>=8.0.0
 httpx>=0.27.0
+sqlalchemy>=2.0          # registrations, audit log and daily caps; Postgres when DATABASE_URL is set
+psycopg[binary]>=3.2
 
 # Feature 3 (count): photo bird counting. If these are absent the feature
 # reports status "planned", its routes answer 503 honestly, and the rest of

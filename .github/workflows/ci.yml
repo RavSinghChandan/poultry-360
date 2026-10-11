@@ -25,6 +25,33 @@ jobs:
         # Router and grounding-guard evals; fails if a score drops below its floor.
         run: python -m evals.run --check
 
+  postgres:
+    # The same suite against Postgres, the production database, so a query
+    # that only works on SQLite fails here and not in front of a farmer.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: pw
+          POSTGRES_DB: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:pw@localhost:5432/test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+      - name: Test on Postgres
+        run: python -m pytest tests/ -q
+
   frontend:
     runs-on: ubuntu-latest
     steps:

@@ -25,7 +25,6 @@ def signed_in_mode(tmp_path, monkeypatch):
     monkeypatch.setenv("ADMIN_KEY", "test-admin")
     monkeypatch.setenv("POULTRY_SECRET", "test-secret")
     tenancy._attempts.clear()
-    tenancy._usage.clear()
     yield
 
 

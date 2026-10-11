@@ -38,7 +38,7 @@ flowchart LR
   API --> O[Ops metrics<br/>latency, errors,<br/>AI calls, farms]
 ```
 
-- **Harness, not prompt.** The model is one step in a loop the code controls: budget, validate, authorise, execute, trace. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- **Harness, not prompt.** The model is one step in a loop the code controls: budget, validate, authorise, execute, trace. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) for the whole system: data model, decisions, failure modes and scaling.
 - **Features are isolated.** Each feature is a package with its own routes and tools; a test parses every feature's imports and fails if one feature reaches into another. Adding a feature does not touch the platform.
 - **Fails safe.** No AI key, a timeout or a bad reply never fails a farmer's request: the table answer is always returned, and the ops panel counts the fallback.
 
@@ -70,7 +70,9 @@ measured on a labelled set of real shed photos; that is the next eval.
 | **Ops panel** | `/admin` (admin key) shows API calls, server-error rate, AI calls, AI fallback rate, AI p95 latency, tokens, per-route p50/p95 and the farms active today. JSON at `GET /api/admin/ops`. |
 | **Sign-in** | A farm registers at `/register`; the owner approves it at `/admin` and sends a signed tenant key + one-click link by WhatsApp. Keys are HMAC-signed, so they survive a free-tier restart. |
 | **Limits** | Daily caps per farm (40), per network (60) and in total (400), set by environment variables. |
-| **Health check** | `GET /api/health` reports each feature's self-check; a feature whose data fails validation is not served. |
+| **Health check** | `GET /api/health` reports each feature's self-check; a feature whose data fails validation is not served. `GET /api/ready` also checks the database. |
+| **Data** | Registrations, revocations, the audit log (`GET /api/admin/audit`) and the daily caps are in Postgres (`DATABASE_URL`, free Neon), so a restart loses nothing. |
+| **Logs** | One JSON line per request with an `X-Request-ID`, which every response and error carries. |
 
 ## Integrating with a farm's other systems
 
@@ -90,7 +92,7 @@ curl -X POST https://poultry-360.onrender.com/api/feed/ration \
 
 ```bash
 ./run.sh                                   # http://localhost:8000
-.venv/bin/python -m pytest tests/ -q       # 230 tests
+.venv/bin/python -m pytest tests/ -q       # 240 tests (CI also runs them on Postgres)
 .venv/bin/python -m evals.run              # the evals above
 ```
 

@@ -5,7 +5,9 @@ exposes platform-level endpoints. Adding a feature does not change this file.
 """
 from __future__ import annotations
 
+import logging
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from api.auth_routes import client_ip, router as auth_router
-from core import tenancy
+from core import logs, store, tenancy
+from core.context import reset_request_id, set_request_id
 from core.config import settings
 from core.registry import FeatureRegistry
 from harness import llm, metrics
@@ -22,10 +25,16 @@ from harness.policy import Mode, Policy
 from harness.tools import Tool, ToolRegistry
 from harness.tracing import Tracer
 
+logs.setup()
+log = logging.getLogger("poultry360")
+
 app = FastAPI(title=settings.app_name, version=settings.version)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.cors_origins],
+    # "*" by default: sign-in is a bearer token, never a cookie, so another site
+    # cannot borrow a farmer's session. POULTRY_CORS narrows it (comma separated).
+    allow_origins=settings.cors_origin_list,
+    expose_headers=["X-Request-ID"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -63,8 +72,40 @@ async def measure(request: Request, call_next):
     for name, value in (request.scope.get("path_params") or {}).items():
         route = route.replace(f"/{value}", f"/{{{name}}}", 1)
     token = tenancy.read_token((request.headers.get("authorization") or "").removeprefix("Bearer ").strip())
-    metrics.record_request(f"{request.method} {route}", response.status_code,
-                           (time.perf_counter() - started) * 1000, token["t"] if token else None)
+    ms = (time.perf_counter() - started) * 1000
+    tenant = token["t"] if token else None
+    metrics.record_request(f"{request.method} {route}", response.status_code, ms, tenant)
+    log.info("request", extra={"fields": {"method": request.method, "route": route, "status": response.status_code,
+                                           "ms": round(ms, 1), "tenant": tenant}})
+    return response
+
+
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Strict-Transport-Security": "max-age=31536000",
+}
+
+
+# Registered last of all, so it is outermost: every log line and audit row below it carries the id.
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    """A request id on every call (kept from X-Request-ID if the caller sent one), echoed back,
+    and a JSON 500 that names it instead of a stack trace."""
+    rid = (request.headers.get("x-request-id") or "")[:32] or uuid.uuid4().hex[:16]
+    token = set_request_id(rid)
+    try:
+        response = await call_next(request)
+    except Exception:
+        log.exception("unhandled error", extra={"fields": {"path": request.url.path}})
+        response = JSONResponse({"detail": "Something went wrong on our side. Please try again.",
+                                 "request_id": rid}, status_code=500)
+    finally:
+        reset_request_id(token)
+    response.headers["X-Request-ID"] = rid
+    for k, v in _SECURITY_HEADERS.items():
+        response.headers.setdefault(k, v)
     return response
 
 
@@ -100,6 +141,16 @@ def health() -> dict[str, Any]:
         "policy_mode": settings.policy_mode,
         "llm_enabled": settings.llm_enabled,
     }
+
+
+@app.get("/api/ready", tags=["platform"])
+def ready() -> JSONResponse:
+    """Readiness: can this instance serve real work? Unlike /api/health (is the process up),
+    this checks the database, so a load balancer can hold traffic until it answers."""
+    db_ok = store.ping()
+    body = {"status": "ready" if db_ok else "not_ready", "database": store.backend() if db_ok else "unreachable",
+            "durable": not store.database_url().startswith("sqlite")}
+    return JSONResponse(body, status_code=200 if db_ok else 503)
 
 
 @app.get("/api/features", tags=["platform"])

@@ -7,7 +7,8 @@
 
 The tenant key is signed (HMAC-SHA256 over tenant + username), so it is checked
 without a database lookup: approved farms can always sign in, even after a
-free-tier restart wipes the disk. The session token is signed the same way
+free-tier restart wipes the disk. Registrations, revocations, the audit log and
+the daily caps live in the database (core/store.py): Postgres in production. The session token is signed the same way
 (7 days). Daily caps per farm user, per network and for the whole app bound
 what the AI key and the CPU can spend.
 
@@ -23,11 +24,16 @@ import json
 import os
 import re
 import secrets
-import sqlite3
 import time
 import uuid
 from collections import defaultdict, deque
-from pathlib import Path
+
+from sqlalchemy import select
+
+from core import store
+from core.context import request_id
+
+T = store.registrations
 
 TOKEN_DAYS = 7
 DAILY_PER_USER = int(os.environ.get("POULTRY_DAILY_PER_USER", "40"))
@@ -38,8 +44,6 @@ _USERNAME = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
 _FALLBACK = secrets.token_hex(32)
 
 _attempts: dict[str, deque[float]] = defaultdict(deque)
-_usage: dict[str, int] = defaultdict(int)
-_usage_day = {"day": ""}
 
 
 class AuthError(Exception):
@@ -119,26 +123,15 @@ def read_token(token: str) -> dict | None:
         return None
 
 
-# ------------------------------------------------------------------ storage (registrations only)
-def _db_path() -> Path:
-    d = Path(os.environ.get("POULTRY_DATA_DIR", Path(__file__).resolve().parents[1] / "data"))
-    d.mkdir(parents=True, exist_ok=True)
-    return d / "tenancy.db"
-
-
-def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(_db_path())
-    c.row_factory = sqlite3.Row
-    c.execute("""CREATE TABLE IF NOT EXISTS registrations (
-        id TEXT PRIMARY KEY, farm TEXT, owner TEXT, email TEXT, phone TEXT, district TEXT,
-        status TEXT DEFAULT 'pending', tenant TEXT, username TEXT, created_at REAL)""")
-    return c
-
-
-def _row(r: sqlite3.Row) -> dict:
+# ------------------------------------------------------------------ storage
+def _row(r) -> dict:
     d = dict(r)
     d["tenant_key"] = tenant_key(d["tenant"], d["username"]) if d["status"] == "approved" and d["tenant"] and d["username"] else None
     return d
+
+
+def _get(c, rid: str):
+    return c.execute(T.select().where(T.c.id == rid)).mappings().first()
 
 
 def _limit(key: str, max_hits: int, seconds: int, message: str) -> None:
@@ -164,10 +157,10 @@ def register(farm: str, owner: str, phone: str, email: str, district: str, ip: s
         raise AuthError(422, "Please give a phone number or an email so we can send your key.")
     if email and not _EMAIL.match(email):
         raise AuthError(422, "Please enter a valid email address.")
-    with _conn() as c:
-        rid = uuid.uuid4().hex
-        c.execute("INSERT INTO registrations (id, farm, owner, email, phone, district, created_at) VALUES (?,?,?,?,?,?,?)",
-                  (rid, farm[:120], owner[:60], email[:160], phone[:20], district.strip()[:60], time.time()))
+    rid = uuid.uuid4().hex
+    with store.connect() as c:
+        c.execute(T.insert().values(id=rid, farm=farm[:120], owner=owner[:60], email=email[:160], phone=phone[:20],
+                                    district=district.strip()[:60], status="pending", created_at=time.time()))
     return {"id": rid, "status": "pending"}
 
 
@@ -177,8 +170,8 @@ def login(key: str, username: str, ip: str) -> dict:
     slug = check_tenant_key(key, username)
     if not slug:
         raise AuthError(401, "Tenant key or username is not right.")
-    with _conn() as c:
-        r = c.execute("SELECT * FROM registrations WHERE tenant=? AND username=?", (slug, username)).fetchone()
+    with store.connect() as c:
+        r = c.execute(T.select().where(T.c.tenant == slug, T.c.username == username)).mappings().first()
     if r and r["status"] == "revoked":
         raise AuthError(403, "This access has been turned off. Please contact Poultry 360.")
     name, farm = (r["owner"], r["farm"]) if r else (username, slug.replace("-", " ").title())
@@ -186,13 +179,13 @@ def login(key: str, username: str, ip: str) -> dict:
 
 
 def list_registrations() -> list[dict]:
-    with _conn() as c:
-        return [_row(r) for r in c.execute("SELECT * FROM registrations ORDER BY created_at DESC").fetchall()]
+    with store.connect() as c:
+        return [_row(r) for r in c.execute(T.select().order_by(T.c.created_at.desc())).mappings()]
 
 
 def approve(rid: str, username: str = "") -> dict:
-    with _conn() as c:
-        r = c.execute("SELECT * FROM registrations WHERE id=?", (rid,)).fetchone()
+    with store.connect() as c:
+        r = _get(c, rid)
         if not r:
             raise AuthError(404, "Request not found")
         user = (username or re.sub(r"[^a-z0-9]", "", ((r["email"] or "").split("@")[0] or r["owner"]).lower())[:20] or "farmer").strip().lower()
@@ -202,30 +195,33 @@ def approve(rid: str, username: str = "") -> dict:
             raise AuthError(422, "Usernames use 2-32 lowercase letters, digits, dots, dashes or underscores.")
         slug = r["tenant"]
         if not slug:
-            taken = {row[0] for row in c.execute("SELECT tenant FROM registrations WHERE tenant IS NOT NULL")}
+            taken = {row[0] for row in c.execute(select(T.c.tenant).where(T.c.tenant.is_not(None)))}
             base = slug = _slugify(r["farm"])
             n = 2
             while slug in taken:
                 slug, n = f"{base}-{n}", n + 1
-        c.execute("UPDATE registrations SET status='approved', tenant=?, username=? WHERE id=?", (slug, user, rid))
-        return _row(c.execute("SELECT * FROM registrations WHERE id=?", (rid,)).fetchone())
+        c.execute(T.update().where(T.c.id == rid).values(status="approved", tenant=slug, username=user))
+        row = _row(_get(c, rid))
+    store.audit("admin", "approve", slug, {"farm": row["farm"], "username": user}, request_id())
+    return row
 
 
 def reject(rid: str) -> dict:
-    with _conn() as c:
-        r = c.execute("SELECT * FROM registrations WHERE id=?", (rid,)).fetchone()
+    with store.connect() as c:
+        r = _get(c, rid)
         if not r:
             raise AuthError(404, "Request not found")
         status = "revoked" if r["status"] == "approved" else "rejected"
-        c.execute("UPDATE registrations SET status=? WHERE id=?", (status, rid))
-        return {"id": rid, "status": status}
+        c.execute(T.update().where(T.c.id == rid).values(status=status))
+    store.audit("admin", "revoke" if status == "revoked" else "reject", r["tenant"] or rid, {"farm": r["farm"]}, request_id())
+    return {"id": rid, "status": status}
 
 
 def issue_directly(farm: str, owner: str, username: str = "", phone: str = "", email: str = "") -> dict:
-    with _conn() as c:
-        rid = uuid.uuid4().hex
-        c.execute("INSERT INTO registrations (id, farm, owner, email, phone, district, created_at) VALUES (?,?,?,?,?,?,?)",
-                  (rid, farm.strip()[:120], owner.strip()[:60], email.strip().lower()[:160], phone.strip()[:20], "", time.time()))
+    rid = uuid.uuid4().hex
+    with store.connect() as c:
+        c.execute(T.insert().values(id=rid, farm=farm.strip()[:120], owner=owner.strip()[:60], email=email.strip().lower()[:160],
+                                    phone=phone.strip()[:20], district="", status="pending", created_at=time.time()))
     return approve(rid, username)
 
 
@@ -238,16 +234,14 @@ def authorize(authorization: str | None, ip: str) -> dict | None:
     if not data:
         raise AuthError(401, "Please sign in to continue.")
     today = time.strftime("%Y-%m-%d")
-    if _usage_day["day"] != today:
-        _usage.clear()
-        _usage_day["day"] = today
     who = f"{data['t']}:{data['u']}"
-    if _usage["__total__"] >= DAILY_TOTAL:
+    keys = ["__total__", "u:" + who, "ip:" + ip]
+    used = store.usage(today, keys)          # in the database, so a restart does not reset the caps
+    if used["__total__"] >= DAILY_TOTAL:
         raise AuthError(429, "Today's free limit for the whole app is used up. Please come back tomorrow.")
-    if _usage["u:" + who] >= DAILY_PER_USER:
+    if used["u:" + who] >= DAILY_PER_USER:
         raise AuthError(429, f"You have used today's {DAILY_PER_USER} requests. Please come back tomorrow.")
-    if _usage["ip:" + ip] >= DAILY_PER_IP:
+    if used["ip:" + ip] >= DAILY_PER_IP:
         raise AuthError(429, "Today's requests from this network are used up. Please come back tomorrow.")
-    for k in ("u:" + who, "ip:" + ip, "__total__"):
-        _usage[k] += 1
+    store.add_usage(today, keys)
     return data

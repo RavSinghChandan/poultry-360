@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
-from core import tenancy
+from core import store, tenancy
 from harness import metrics
 
 router = APIRouter(prefix="/api", tags=["auth"])
@@ -70,7 +70,15 @@ def _admin(key: str | None) -> None:
 def ops(x_admin_key: str | None = Header(default=None)) -> dict:
     """Live service health for the owner: traffic, errors, latency, model calls, farms today."""
     _admin(x_admin_key)
-    return metrics.snapshot()
+    return {**metrics.snapshot(), "storage": {"database": store.backend(),
+                                             "durable": not store.database_url().startswith("sqlite")}}
+
+
+@router.get("/admin/audit")
+def audit(x_admin_key: str | None = Header(default=None)) -> list[dict]:
+    """Who approved, rejected or issued what, newest first, with the request id of each change."""
+    _admin(x_admin_key)
+    return store.recent_audit()
 
 
 @router.get("/admin/registrations")

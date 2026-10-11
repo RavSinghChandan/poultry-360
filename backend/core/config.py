@@ -14,6 +14,10 @@ class Settings:
     cors_origins: str = os.environ.get("POULTRY_CORS", "*")
 
     @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()] or ["*"]
+
+    @property
     def llm_enabled(self) -> bool:
         return bool(os.environ.get("DEEPSEEK_API_KEY", "").strip())
 

@@ -15,6 +15,8 @@ services:
         generateValue: true
       - key: POULTRY_SECRET        # signs tenant keys and sessions
         generateValue: true
+      - key: DATABASE_URL          # a free Neon Postgres URL; without it, data lives on the
+        sync: false                 # free disk and is lost when the server sleeps or redeploys
       - key: POULTRY_DAILY_PER_USER
         value: "40"
       - key: POULTRY_DAILY_TOTAL
