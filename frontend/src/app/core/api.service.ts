@@ -35,13 +35,20 @@ export interface Ration {
 /**
  * The only place the API base URL is decided.
  *
- * On `ng serve` (port 4200) the backend is a separate process on 8000. In a
- * deployment FastAPI serves this bundle, so the API is same-origin.
+ * On `ng serve` (port 4200) the backend is a separate process on 8000. The
+ * static copy on Vercel opens instantly and calls the API on Render, which can
+ * take ~30 s to wake on the free tier. When FastAPI serves this bundle itself,
+ * the API is same-origin.
  */
+export const API_BASE =
+  location.port === '4200' ? 'http://localhost:8000'
+  : location.hostname.endsWith('.vercel.app') ? 'https://poultry-360.onrender.com'
+  : '';
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private http = inject(HttpClient);
-  private base = location.port === '4200' ? 'http://localhost:8000' : '';
+  private base = API_BASE;
 
   features(lang?: string): Observable<{ features: FeatureInfo[] }> {
     const q = lang ? `?lang=${encodeURIComponent(lang)}` : '';

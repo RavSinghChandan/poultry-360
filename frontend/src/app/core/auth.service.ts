@@ -2,10 +2,12 @@ import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient, HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { CanActivateFn, Router } from '@angular/router';
 import { catchError, firstValueFrom, throwError } from 'rxjs';
+import { API_BASE } from './api.service';
+
+export { API_BASE };
 
 export interface Session { token: string; name: string; tenant: string; tenantName: string; }
 const KEY = 'poultry360.session';
-export const API_BASE = location.port === '4200' ? 'http://localhost:8000' : '';
 
 /** The signed-in farm. The token is signed by the server and lasts 7 days. */
 @Injectable({ providedIn: 'root' })

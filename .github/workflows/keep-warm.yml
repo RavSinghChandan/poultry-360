@@ -1,0 +1,22 @@
+# Render's free tier puts a server to sleep after 15 idle minutes, and waking
+# it takes ~30 s. Pinging every 10 minutes keeps Poultry 360 and Aaina awake
+# from about 9:30 to 19:30 IST, when people open them from the portfolio.
+# The window is capped so two always-warm services stay inside Render's
+# 750 free instance hours a month (2 x ~10 h x 31 days ~ 640 h).
+name: keep-warm
+
+on:
+  schedule:
+    - cron: "*/10 4-13 * * *"   # UTC
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping the APIs
+        run: |
+          for url in https://poultry-360.onrender.com/api/health https://aaina-api.onrender.com/api/health; do
+            curl -s -o /dev/null -w "%{http_code} %{time_total}s $url\n" --max-time 90 "$url" || true
+          done

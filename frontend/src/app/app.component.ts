@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
+import { API_BASE } from './core/api.service';
 import { AuthService } from './core/auth.service';
 import { I18nService } from './core/i18n.service';
 import { SpeechService } from './core/speech.service';
@@ -74,6 +75,8 @@ export class AppComponent {
   ];
 
   constructor() {
+    // Start waking a sleeping free-tier API while the farmer picks a language.
+    if (API_BASE) fetch(`${API_BASE}/api/health`, { cache: 'no-store' }).catch(() => {});
     this.router.events.pipe(filter((e) => e instanceof NavigationEnd)).subscribe((e) => {
       this.url.set((e as NavigationEnd).urlAfterRedirects);
       this.speech.stop();
